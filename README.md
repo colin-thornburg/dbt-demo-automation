@@ -1,6 +1,6 @@
 # dbt Cloud Demo Automation Tool
 
-An AI-powered Streamlit application that enables dbt Labs Sales Engineers to rapidly create customized, industry-specific dbt Cloud demo projects.
+An AI-powered Streamlit application that enables Solution Architects to rapidly create customized, industry-specific dbt PLatform demo projects.
 
 ## Overview
 
