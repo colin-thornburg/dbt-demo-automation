@@ -52,7 +52,8 @@ def render_files_preview_page():
                 )
 
                 # Save repository info to session state
-                set_state('repo_info', repo_info)
+                set_state('repo_info', repo_info)  # Legacy key for compatibility
+                set_state('repository_info', repo_info)  # New key for provisioning
                 set_state('repo_name', repo_info['repo_name'])
                 if scenario:
                     set_state(
@@ -99,21 +100,24 @@ def render_files_preview_page():
 
     if has_semantic:
         col1, col2, col3, col4, col5 = st.columns(5)
-    else:
-        col1, col2, col3, col4, col5 = st.columns(4), None, None, None, None
-
-    with col1:
-        st.metric("Seed Files", summary['seeds'])
-    with col2:
-        st.metric("Model Files", summary['models'])
-    with col3:
-        st.metric("Schema Files", summary['schemas'])
-    if has_semantic and col4:
+        with col1:
+            st.metric("Seed Files", summary['seeds'])
+        with col2:
+            st.metric("Model Files", summary['models'])
+        with col3:
+            st.metric("Schema Files", summary['schemas'])
         with col4:
             st.metric("Semantic Layer", summary['semantic_layer'])
         with col5:
             st.metric("Total Files", summary['total'])
     else:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Seed Files", summary['seeds'])
+        with col2:
+            st.metric("Model Files", summary['models'])
+        with col3:
+            st.metric("Schema Files", summary['schemas'])
         with col4:
             st.metric("Total Files", summary['total'])
 
@@ -167,9 +171,14 @@ def render_files_preview_page():
 
     st.subheader("GitHub Repository Setup")
 
-    github_username = get_state('github_username', '')
-    github_token = get_state('github_token', '')
-    template_repo_url = get_state('github_template_repo', '')
+    # Get config for fallback values
+    from src.config.settings import load_config
+    app_config = load_config()
+    
+    # Get values from session state with .env fallback
+    github_username = get_state('github_username', '') or app_config.default_github_org or ''
+    github_token = get_state('github_token', '') or app_config.github_token or ''
+    template_repo_url = get_state('github_template_repo', '') or app_config.dbt_template_repo_url or ''
 
     default_name = default_repo_name(scenario.company_name) if scenario else "dbt-demo-project"
     current_repo_name = get_state('repo_name', default_name) or default_name

@@ -1,0 +1,71 @@
+feat: Add dbt Cloud Terraform automation with GitHub App sync fix
+
+This major update adds complete Terraform-based dbt Cloud provisioning with an automated solution for GitHub App repository propagation delays.
+
+## What's New
+
+### dbt Cloud Automation
+- Complete Terraform infrastructure-as-code for dbt Cloud projects
+- Automated provisioning of projects, environments, connections, and jobs
+- New Streamlit UI page for visual Terraform workflow with live progress
+- dbt Cloud Admin API integration for project management
+
+### Critical Bug Fix: Repository Clone Failures
+Fixed the "repository 'https://github.com/None.git/' not found" error that occurred when jobs ran immediately after provisioning.
+
+**Root Cause**: GitHub Apps take 30-60 seconds to propagate new repository access. When dbt Cloud queries GitHub for metadata during this window, it receives nothing, causing the repository full_name to remain null.
+
+**Solution**: 
+- Wait 30 seconds after Terraform apply for GitHub App propagation
+- Call dbt Cloud Admin API to force repository metadata refresh
+- Verify metadata population before triggering jobs
+- Jobs now succeed automatically without manual intervention
+
+### New Capabilities
+- Snowflake connection configuration with credential management
+- Separate dev and prod environments with proper credentials
+- Production job scheduling with custom cron expressions
+- Comprehensive error handling and user guidance
+- Full state management across multi-step provisioning flow
+
+## Files Changed
+
+### New Modules
+- src/dbt_cloud/api_client.py - dbt Cloud API client
+- src/terraform_integration/ - Terraform generation and execution
+- src/ui/pages/dbt_cloud_provisioning.py - Provisioning UI
+- src/ui/pages/final_success.py - Success page with links
+- terraform/ - Complete Terraform configuration (8+ resources)
+
+### Documentation
+- CHANGELOG.md - Detailed changelog
+- TERRAFORM_INTEGRATION_SUMMARY.md - Integration overview
+- docs/TERRAFORM_SETUP.md - Setup guide
+- docs/TERRAFORM_QUICKSTART.md - Quick start
+- docs/DBT_CLOUD_PROVISIONING_GUIDE.md - Workflow guide
+- docs/ENV_VARIABLES_REFERENCE.md - Environment variables
+- docs/WORKFLOW_DIAGRAM.md - Visual workflows
+
+### Configuration
+- Enhanced AppConfig with Snowflake and Terraform settings
+- Updated .env.example with new required variables
+- Added .gitignore rules for Terraform state files
+- Updated requirements for new dependencies
+
+## Breaking Changes
+None - fully backward compatible
+
+## Migration Required
+1. Add Snowflake configuration to .env (see .env.example)
+2. Add GITHUB_APP_INSTALLATION_ID to .env
+3. Install Terraform CLI for provisioning features
+
+## Testing
+- Verified end-to-end provisioning workflow
+- Tested repository metadata sync with 30s delay
+- Confirmed job runs succeed after automated metadata refresh
+- Validated all Terraform resources create successfully
+
+## Related Issues
+Resolves repository clone failures in automated provisioning workflow
+

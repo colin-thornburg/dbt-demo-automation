@@ -16,6 +16,8 @@ from src.ui.pages.demo_setup import render_demo_setup_page, render_configuration
 from src.ui.pages.scenario_review import render_scenario_review_page
 from src.ui.pages.files_preview import render_files_preview_page
 from src.ui.pages.repository_success import render_repository_success_page
+from src.ui.pages.dbt_cloud_provisioning import render_dbt_cloud_provisioning_page
+from src.ui.pages.final_success import render_final_success_page
 
 # Page configuration
 st.set_page_config(
@@ -146,7 +148,9 @@ def main():
             'demo_setup': '📝 Setup',
             'scenario_review': '👀 Review',
             'files_preview': '📁 Files',
-            'repository_success': '✅ Success'
+            'repository_success': '🎯 Repository',
+            'dbt_cloud_provisioning': '🏗️ Provision',
+            'final_success': '✅ Success'
         }
 
         st.markdown(f"**Current:** {page_names.get(current_page, 'Setup')}")
@@ -197,6 +201,10 @@ def main():
         render_files_preview_page()
     elif current_page == 'repository_success':
         render_repository_success_page()
+    elif current_page == 'dbt_cloud_provisioning':
+        render_dbt_cloud_provisioning_page()
+    elif current_page == 'final_success':
+        render_final_success_page()
     else:
         render_demo_setup_page()
 

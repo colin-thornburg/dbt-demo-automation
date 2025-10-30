@@ -485,7 +485,7 @@ Required environment variables (for .env or Streamlit secrets):
 
 ```
 # Optional: Set defaults, but allow UI override
-DEFAULT_AI_PROVIDER=claude
+DEFAULT_AI_PROVIDER=openai
 DEFAULT_GITHUB_ORG=dbt-labs-demos
 DEFAULT_DBT_ACCOUNT_ID=12345
 DEFAULT_WAREHOUSE_TYPE=snowflake

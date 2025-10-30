@@ -63,26 +63,43 @@ def render_repository_success_page():
     # Next steps
     st.subheader("📋 Next Steps")
 
-    st.markdown("""
-    ### 1. View Your Repository
-    Click the link above to view your repository on GitHub.
-
-    ### 2. dbt Cloud Setup (Manual - Phase 6 Coming Soon)
-    For now, you'll need to manually set up dbt Cloud:
-
-    1. Go to [dbt Cloud](https://cloud.getdbt.com/)
-    2. Create a new project
-    3. Connect your GitHub repository:
-       - Use the repository URL above
-       - dbt Cloud will detect it's a dbt project
-    4. Set up a connection to your warehouse
-    5. Run `dbt seed` to load sample data
-    6. Run `dbt run` to build models
-    7. Run `dbt test` to run tests
-
-    ### 3. Demo Talking Points
-    Use the generated README.md in your repository for talking points during the demo!
-    """)
+    # Check if Snowflake config is available for automated provisioning
+    from src.config.settings import load_config
+    app_config = load_config()
+    has_snowflake_config = bool(app_config.snowflake_account and app_config.github_app_installation_id)
+    
+    if has_snowflake_config:
+        st.success("""
+        ### ✨ Automated dbt Cloud Provisioning Available!
+        
+        You can now automatically provision your dbt Cloud project using Terraform.
+        
+        Click **"Provision dbt Cloud"** below to:
+        - Create dbt Cloud project
+        - Connect to Snowflake
+        - Set up dev & prod environments
+        - Configure production job
+        
+        **Or** you can skip this step and set up dbt Cloud manually.
+        """)
+    else:
+        st.info("""
+        ### 📌 Manual dbt Cloud Setup
+        
+        To use automated provisioning, add these to your `.env` file:
+        - `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_WAREHOUSE`, etc.
+        - `GITHUB_APP_INSTALLATION_ID`
+        
+        See [Terraform Quickstart](docs/TERRAFORM_QUICKSTART.md) for details.
+        
+        **For now, set up dbt Cloud manually:**
+        
+        1. Go to [dbt Cloud](https://cloud.getdbt.com/)
+        2. Create a new project
+        3. Connect your GitHub repository
+        4. Set up your warehouse connection
+        5. Run `dbt seed`, `dbt run`, `dbt test`
+        """)
 
     st.divider()
 
@@ -90,21 +107,22 @@ def render_repository_success_page():
     col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
-        if st.button("View on GitHub", type="primary", use_container_width=True):
+        if st.button("View on GitHub", type="secondary", use_container_width=True):
             st.markdown(f"[Open Repository]({repo_info['repo_url']})")
 
     with col2:
-        if st.button("← Back to Files", type="secondary", use_container_width=True):
-            set_state('current_page', 'files_preview')
-            st.rerun()
+        if has_snowflake_config:
+            if st.button("🏗️ Provision dbt Cloud", type="primary", use_container_width=True):
+                set_state('current_page', 'dbt_cloud_provisioning')
+                st.rerun()
+        else:
+            if st.button("← Back to Files", type="secondary", use_container_width=True):
+                set_state('current_page', 'files_preview')
+                st.rerun()
 
     with col3:
-        if st.button("🔄 New Demo", type="secondary", use_container_width=True):
-            # Clear all state and start over
-            set_state('current_page', 'demo_setup')
-            set_state('demo_scenario', None)
-            set_state('generated_files', None)
-            set_state('repo_info', None)
+        if st.button("Skip to Success →", type="secondary", use_container_width=True):
+            set_state('current_page', 'final_success')
             st.rerun()
 
     st.divider()

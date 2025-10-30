@@ -53,6 +53,11 @@ def initialize_session_state():
         'scroll_to_top': False,
         'repo_name': '',
         'repo_name_custom': False,
+        'repository_info': None,  # Info from GitHub repo creation
+        
+        # Terraform/Provisioning State
+        'provisioning_result': None,  # Result from Terraform apply
+        'provisioning_in_progress': False,
 
         # UI State
         'show_ai_config': False,
@@ -100,7 +105,9 @@ def clear_generated_content():
         'demo_scenario',
         'generated_files',
         'github_repo_url',
-        'dbt_project_url'
+        'dbt_project_url',
+        'repository_info',
+        'provisioning_result'
     ]
 
     for key in keys_to_clear:

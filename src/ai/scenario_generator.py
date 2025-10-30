@@ -63,6 +63,7 @@ class DemoScenario(BaseModel):
     # Metadata
     company_name: Optional[str] = None
     industry: Optional[str] = None
+    include_semantic_layer: bool = Field(default=False, description="Whether semantic layer is included")
 
 
 def clean_json_response(text: str) -> str:
@@ -268,6 +269,7 @@ def generate_demo_scenario(
         # Add metadata
         scenario.company_name = company_name
         scenario.industry = industry
+        scenario.include_semantic_layer = include_semantic_layer
 
         return scenario
 

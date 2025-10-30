@@ -219,24 +219,24 @@ def render_ai_config_section():
             },
             {
                 "value": "gpt-4o",
-                "label": "gpt-4o — Balanced quality and speed (recommended)"
+                "label": "gpt-4o — Balanced quality and speed"
             },
             {
                 "value": "gpt-4o-mini",
-                "label": "gpt-4o-mini — Fastest responses, lowest cost"
+                "label": "gpt-4o-mini — Fastest responses, lowest cost (recommended)"
             },
         ]
         openai_model_values = [option["value"] for option in model_options]
         default_model = (
             config.default_openai_model
             if config.default_openai_model in openai_model_values
-            else 'gpt-4o'
+            else 'gpt-4o-mini'
         )
 
         current_model = get_state('ai_model', default_model)
         selected_index = next(
             (index for index, option in enumerate(model_options) if option["value"] == current_model),
-            1  # default to gpt-4o
+            2  # default to gpt-4o-mini
         )
         model_labels = [option["label"] for option in model_options]
         selected_label = st.selectbox(
@@ -247,7 +247,7 @@ def render_ai_config_section():
                 "Choose the OpenAI model best suited for your demo. "
                 "gpt-5 provides the most capable reasoning, "
                 "gpt-4o balances quality and price, "
-                "and gpt-4o-mini keeps costs lowest with rapid responses."
+                "and gpt-4o-mini keeps costs lowest with rapid responses (recommended)."
             ),
             key="input_ai_model"
         )
@@ -294,9 +294,13 @@ def render_github_config_section():
         f"Using .env: {config.default_github_org}"
         if has_env_org else "e.g. dbt-labs or your-username"
     )
+    # Get current value, but fall back to .env if empty
+    current_username = get_state('github_username', '')
+    default_username = config.default_github_org or ''
+    
     username = st.text_input(
         "GitHub Owner (Username or Organization) *",
-        value=get_state('github_username', config.default_github_org or ''),
+        value=current_username if current_username else default_username,
         placeholder=username_placeholder,
         help=(
             "The account that will own the repository. This is the text immediately after "

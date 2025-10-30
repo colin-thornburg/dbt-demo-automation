@@ -18,6 +18,8 @@ This tool reduces demo preparation time from hours to minutes by:
 - GitHub account with Personal Access Token
 - dbt Cloud account with Service Token
 - API key for Claude (Anthropic) or OpenAI
+- **Terraform CLI** (optional, for automated dbt Cloud provisioning)
+- **Snowflake account** (optional, for Terraform provisioning)
 
 ### Installation
 
@@ -98,10 +100,18 @@ See [`.env.example`](.env.example) for all available options.
 - Watch real-time progress as the tool:
   - Generates seed data and dbt models
   - Creates a GitHub repository
-  - Provisions dbt Cloud project
-  - Runs initial dbt build
+  - **Optional**: Provisions dbt Cloud project with Terraform
 
-### 4. Ready to Demo
+### 4. dbt Cloud Provisioning (Optional)
+- Use Terraform to automatically provision:
+  - dbt Cloud project
+  - Snowflake connection
+  - Development & Production environments
+  - Scheduled jobs and CI configuration
+
+See the [Terraform Quickstart Guide](docs/TERRAFORM_QUICKSTART.md) for details.
+
+### 5. Ready to Demo
 - Access your GitHub repository
 - Open the dbt Cloud project
 - Review generated talking points
@@ -147,7 +157,13 @@ demo_automation/
 │   ├── github_integration/     # GitHub API wrapper
 │   ├── dbt_cloud/             # dbt Cloud API integration
 │   ├── file_generation/       # dbt file generators
+│   ├── terraform_integration/ # Terraform automation (NEW)
 │   └── ui/                    # Streamlit UI components
+├── terraform/                  # Terraform configurations (NEW)
+│   ├── providers.tf           # Provider configuration
+│   ├── variables.tf           # Input variables
+│   ├── main.tf               # Resource definitions
+│   └── outputs.tf            # Output values
 ├── templates/                  # Prompt templates
 ├── docs/                      # Documentation
 ├── tests/                     # Unit and integration tests
@@ -165,9 +181,12 @@ demo_automation/
 
 ### Automated Provisioning
 - GitHub repository creation
-- dbt Cloud project setup
-- Environment and job configuration
-- Initial dbt run execution
+- **Terraform-based dbt Cloud provisioning** (NEW)
+  - Automated project creation
+  - Snowflake connection setup
+  - Development & Production environments
+  - Scheduled jobs and CI configuration
+- Infrastructure as Code approach for repeatability
 
 ### Demo Enhancements
 - Data quality scenarios (when requested)
@@ -196,11 +215,19 @@ flake8 src/
 
 ## Documentation
 
+### Getting Started
 - [Setup Guide](docs/SETUP_GUIDE.md) - Detailed installation and configuration
 - [User Guide](docs/USER_GUIDE.md) - Step-by-step usage instructions
+- [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) - Work with the generated project and dbt Cloud CLI
+
+### Terraform Provisioning (NEW)
+- **[Terraform Quickstart](docs/TERRAFORM_QUICKSTART.md)** - Get started in 5 minutes
+- **[Terraform Setup Guide](docs/TERRAFORM_SETUP.md)** - Complete provisioning documentation
+- [Terraform README](terraform/README.md) - Configuration reference
+
+### Reference
 - [API Reference](docs/API_REFERENCE.md) - dbt Cloud and GitHub API details
 - [Development Log](docs/DEVELOPMENT_LOG.md) - Build progress and testing notes
-- [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) - Work with the generated project and dbt Cloud CLI
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## Architecture
@@ -210,6 +237,7 @@ Built with:
 - **Pydantic** - Configuration validation
 - **Anthropic/OpenAI** - AI model providers
 - **PyGithub** - GitHub API integration
+- **Terraform** - Infrastructure as Code for dbt Cloud provisioning
 - **Requests** - dbt Cloud API integration
 
 ## Security

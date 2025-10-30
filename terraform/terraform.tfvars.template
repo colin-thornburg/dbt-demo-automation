@@ -1,0 +1,36 @@
+# This is a template file. Copy to terraform.tfvars and fill in your values.
+# DO NOT commit terraform.tfvars to version control!
+
+# dbt Cloud Configuration
+dbt_cloud_account_id = "YOUR_DBT_CLOUD_ACCOUNT_ID"
+dbt_cloud_token      = "YOUR_DBT_CLOUD_TOKEN"
+dbt_cloud_host_url   = "https://cloud.getdbt.com/api"
+
+# Project Configuration
+project_name        = "Demo Project Name"
+project_description = "Demo project for [Company Name]"
+
+# Repository Configuration
+github_repo_url         = "https://github.com/username/repo-name"
+github_installation_id  = "YOUR_GITHUB_APP_INSTALLATION_ID"
+
+# Snowflake Configuration
+snowflake_account   = "your-account.region"
+snowflake_database  = "DEMO_DB"
+snowflake_warehouse = "DEMO_WH"
+snowflake_role      = "DBT_ROLE"
+snowflake_user      = "DBT_USER"
+snowflake_password  = "YOUR_SNOWFLAKE_PASSWORD"
+snowflake_schema    = "analytics"
+
+# Environment Configuration
+dev_threads  = 4
+prod_threads = 8
+
+# Job Configuration
+enable_production_job       = true
+production_job_schedule_cron = "0 6 * * *"  # 6 AM daily
+
+# Semantic Layer
+enable_semantic_layer = false
+

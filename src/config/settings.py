@@ -12,7 +12,7 @@ import os
 class AIConfig(BaseModel):
     """Configuration for AI provider"""
     provider: Literal["claude", "openai"] = Field(
-        default="claude",
+        default="openai",
         description="AI provider to use for generation"
     )
     api_key: SecretStr = Field(
@@ -76,6 +76,43 @@ class DbtCloudConfig(BaseModel):
     )
 
 
+class SnowflakeConfig(BaseModel):
+    """Configuration for Snowflake connection"""
+    account: str = Field(
+        description="Snowflake account identifier (e.g., xy12345.us-east-1)"
+    )
+    database: str = Field(
+        description="Snowflake database name"
+    )
+    warehouse: str = Field(
+        description="Snowflake warehouse name"
+    )
+    role: str = Field(
+        description="Snowflake role for dbt"
+    )
+    user: str = Field(
+        description="Snowflake username"
+    )
+    password: SecretStr = Field(
+        description="Snowflake password"
+    )
+    schema: str = Field(
+        default="analytics",
+        description="Default Snowflake schema"
+    )
+
+
+class TerraformConfig(BaseModel):
+    """Configuration for Terraform operations"""
+    github_installation_id: str = Field(
+        description="GitHub App Installation ID for dbt Cloud"
+    )
+    auto_approve: bool = Field(
+        default=False,
+        description="Whether to auto-approve Terraform apply"
+    )
+
+
 class DemoInputs(BaseModel):
     """User inputs for demo generation"""
     company_name: str = Field(
@@ -108,7 +145,7 @@ class AppConfig(BaseSettings):
 
     # AI Provider Defaults
     default_ai_provider: str = Field(
-        default="claude",
+        default="openai",
         alias="DEFAULT_AI_PROVIDER"
     )
     anthropic_api_key: Optional[str] = Field(
@@ -124,7 +161,7 @@ class AppConfig(BaseSettings):
         alias="DEFAULT_CLAUDE_MODEL"
     )
     default_openai_model: str = Field(
-        default="gpt-4o",
+        default="gpt-4o-mini",
         alias="DEFAULT_OPENAI_MODEL"
     )
 
@@ -174,6 +211,46 @@ class AppConfig(BaseSettings):
     dbt_cloud_defer_env_id: Optional[str] = Field(
         default=None,
         alias="DBT_CLOUD_DEFER_ENV_ID"
+    )
+
+    # Snowflake Defaults
+    snowflake_account: Optional[str] = Field(
+        default=None,
+        alias="SNOWFLAKE_ACCOUNT"
+    )
+    snowflake_database: Optional[str] = Field(
+        default=None,
+        alias="SNOWFLAKE_DATABASE"
+    )
+    snowflake_warehouse: Optional[str] = Field(
+        default=None,
+        alias="SNOWFLAKE_WAREHOUSE"
+    )
+    snowflake_role: Optional[str] = Field(
+        default=None,
+        alias="SNOWFLAKE_ROLE"
+    )
+    snowflake_user: Optional[str] = Field(
+        default=None,
+        alias="SNOWFLAKE_USER"
+    )
+    snowflake_password: Optional[str] = Field(
+        default=None,
+        alias="SNOWFLAKE_PASSWORD"
+    )
+    snowflake_schema: str = Field(
+        default="analytics",
+        alias="SNOWFLAKE_SCHEMA"
+    )
+
+    # Terraform Defaults
+    github_app_installation_id: Optional[str] = Field(
+        default=None,
+        alias="GITHUB_APP_INSTALLATION_ID"
+    )
+    terraform_auto_approve: bool = Field(
+        default=False,
+        alias="TERRAFORM_AUTO_APPROVE"
     )
 
     # Application Settings

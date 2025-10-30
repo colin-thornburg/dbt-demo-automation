@@ -85,7 +85,7 @@ nano .env  # or vim, code, etc.
 
 ```env
 # Choose your default AI provider
-DEFAULT_AI_PROVIDER=claude  # or openai
+DEFAULT_AI_PROVIDER=openai  # or claude
 
 # Add your API key(s)
 ANTHROPIC_API_KEY=sk-ant-xxxxx
@@ -228,11 +228,11 @@ print(f'✓ GitHub connected as: {user.login}')
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DEFAULT_AI_PROVIDER` | No | `claude` | AI provider (claude/openai) |
+| `DEFAULT_AI_PROVIDER` | No | `openai` | AI provider (claude/openai) |
 | `ANTHROPIC_API_KEY` | If using Claude | - | Anthropic API key |
 | `OPENAI_API_KEY` | If using OpenAI | - | OpenAI API key |
 | `DEFAULT_CLAUDE_MODEL` | No | `claude-sonnet-4-5-20250929` | Claude model |
-| `DEFAULT_OPENAI_MODEL` | No | `gpt-4o` | OpenAI model |
+| `DEFAULT_OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model |
 | `DEFAULT_GITHUB_ORG` | No | - | GitHub username/org |
 | `GITHUB_TOKEN` | No* | - | GitHub PAT |
 | `DBT_TEMPLATE_REPO_URL` | No | Pre-configured | Template repo |
