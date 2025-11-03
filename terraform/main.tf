@@ -60,6 +60,7 @@ resource "dbtcloud_environment" "development" {
   
   connection_id = dbtcloud_connection.snowflake.connection_id
   credential_id = dbtcloud_snowflake_credential.dev_credentials.credential_id
+  repository_id = dbtcloud_repository.demo_repo.repository_id
 
   depends_on = [
     dbtcloud_project_repository.demo_project_repo
@@ -89,6 +90,7 @@ resource "dbtcloud_environment" "production" {
   
   connection_id = dbtcloud_connection.snowflake.connection_id
   credential_id = dbtcloud_snowflake_credential.prod_credentials.credential_id
+  repository_id = dbtcloud_repository.demo_repo.repository_id
 
   depends_on = [
     dbtcloud_project_repository.demo_project_repo

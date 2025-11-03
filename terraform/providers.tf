@@ -4,7 +4,7 @@ terraform {
   required_providers {
     dbtcloud = {
       source  = "dbt-labs/dbtcloud"
-      version = "~> 0.3"
+      version = "~> 1.3.0"
     }
   }
 }
@@ -14,4 +14,3 @@ provider "dbtcloud" {
   token      = var.dbt_cloud_token
   host_url   = var.dbt_cloud_host_url
 }
-

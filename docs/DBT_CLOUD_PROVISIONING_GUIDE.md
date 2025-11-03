@@ -441,3 +441,4 @@ If you encounter issues:
 
 **Ready to try it?** Add Snowflake credentials to your `.env` and start automating! 🚀
 
+
