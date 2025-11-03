@@ -210,6 +210,125 @@ class RepositoryManager:
             raise Exception(f"Failed to push to repository: {e.stderr}")
 
 
+def create_mesh_repositories(
+    scenario: DemoScenario,
+    mesh_projects: Dict[str, GeneratedFiles],
+    github_token: str,
+    github_username: str,
+    template_repo_url: str,
+    base_repo_name: Optional[str] = None
+) -> Dict[str, Dict[str, str]]:
+    """
+    Create multiple repositories for mesh demo
+    
+    Args:
+        scenario: Demo scenario
+        mesh_projects: Dictionary of GeneratedFiles objects (producer, consumer_1, etc.)
+        github_token: GitHub Personal Access Token
+        github_username: GitHub username or organization
+        template_repo_url: Template repository URL
+        base_repo_name: Base repository name (will append -producer, -consumer-1, etc.)
+        
+    Returns:
+        Dictionary mapping project key to repository info
+    """
+    manager = RepositoryManager(github_token, github_username)
+    
+    # Determine base repository name
+    default_base = default_repo_name(scenario.company_name)
+    base_name = base_repo_name or default_base
+    
+    results = {}
+    
+    # Create producer repository
+    producer_name = f"{base_name}-producer"
+    producer_files = mesh_projects.get('producer')
+    if producer_files:
+        producer_info = _create_single_repo(
+            manager=manager,
+            scenario=scenario,
+            generated_files=producer_files,
+            repo_name=producer_name,
+            description=f"Producer project for {scenario.company_name} dbt Mesh demo",
+            template_repo_url=template_repo_url,
+            github_token=github_token
+        )
+        results['producer'] = producer_info
+    
+    # Create consumer repositories
+    for key in sorted(mesh_projects.keys()):
+        if key.startswith('consumer_'):
+            consumer_index = key.replace('consumer_', '')
+            consumer_name = f"{base_name}-consumer-{consumer_index}"
+            consumer_files = mesh_projects[key]
+            
+            consumer_info = _create_single_repo(
+                manager=manager,
+                scenario=scenario,
+                generated_files=consumer_files,
+                repo_name=consumer_name,
+                description=f"Consumer project {consumer_index} for {scenario.company_name} dbt Mesh demo",
+                template_repo_url=template_repo_url,
+                github_token=github_token
+            )
+            results[key] = consumer_info
+    
+    return results
+
+
+def _create_single_repo(
+    manager: RepositoryManager,
+    scenario: DemoScenario,
+    generated_files: GeneratedFiles,
+    repo_name: str,
+    description: str,
+    template_repo_url: str,
+    github_token: str
+) -> Dict[str, str]:
+    """
+    Helper function to create a single repository
+    """
+    import tempfile
+    from pathlib import Path
+    
+    final_repo_name = sanitize_repo_name(repo_name)
+    
+    # Create temporary directory for repository
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo_dir = Path(temp_dir) / final_repo_name
+        
+        # Step 1: Clone template repository
+        manager.clone_template(template_repo_url, repo_dir)
+        
+        # Step 2: Add generated files
+        manager.add_generated_files(repo_dir, generated_files)
+        
+        # Step 3: Create GitHub repository
+        clone_url = manager.create_repository(
+            repo_name=final_repo_name,
+            description=description,
+            private=True
+        )
+        
+        # Step 4: Push to GitHub
+        manager.push_to_repository(
+            repo_dir=repo_dir,
+            repo_url=clone_url,
+            github_token=github_token,
+            commit_message=f"Initial commit: {scenario.company_name} dbt demo"
+        )
+    
+    # Return repository info
+    repo_url = f"https://github.com/{manager.username}/{final_repo_name}"
+    
+    return {
+        'repo_url': repo_url,
+        'repo_name': final_repo_name,
+        'clone_url': clone_url,
+        'description': description
+    }
+
+
 def create_demo_repository(
     scenario: DemoScenario,
     generated_files: GeneratedFiles,

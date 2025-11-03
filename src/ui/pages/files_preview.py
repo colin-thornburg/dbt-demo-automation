@@ -12,6 +12,7 @@ from src.ui.session_state import get_state, set_state
 from src.file_generation import GeneratedFiles
 from src.github_integration import (
     create_demo_repository,
+    create_mesh_repositories,
     default_repo_name,
     sanitize_repo_name,
 )
@@ -35,31 +36,59 @@ def render_files_preview_page():
                 github_username = get_state('github_username')
                 template_repo_url = get_state('github_template_repo')
                 requested_repo_name = get_state('repo_name', '').strip()
-                repo_name_override = (
-                    sanitize_repo_name(requested_repo_name)
-                    if requested_repo_name
-                    else None
-                )
+                is_mesh = get_state('is_mesh_demo', False)
+                mesh_projects = get_state('mesh_projects', None)
 
-                # Create repository
-                repo_info = create_demo_repository(
-                    scenario=scenario,
-                    generated_files=generated_files,
-                    github_token=github_token,
-                    github_username=github_username,
-                    template_repo_url=template_repo_url,
-                    repo_name=repo_name_override
-                )
-
-                # Save repository info to session state
-                set_state('repo_info', repo_info)  # Legacy key for compatibility
-                set_state('repository_info', repo_info)  # New key for provisioning
-                set_state('repo_name', repo_info['repo_name'])
-                if scenario:
-                    set_state(
-                        'repo_name_custom',
-                        repo_info['repo_name'] != default_repo_name(scenario.company_name)
+                if is_mesh and mesh_projects:
+                    # Create multiple repositories for mesh demo
+                    base_repo_name = (
+                        sanitize_repo_name(requested_repo_name)
+                        if requested_repo_name
+                        else None
                     )
+                    
+                    mesh_repos = create_mesh_repositories(
+                        scenario=scenario,
+                        mesh_projects=mesh_projects,
+                        github_token=github_token,
+                        github_username=github_username,
+                        template_repo_url=template_repo_url,
+                        base_repo_name=base_repo_name
+                    )
+                    
+                    # Save all repository info
+                    set_state('mesh_repositories', mesh_repos)
+                    # For compatibility, save producer as main repo
+                    if 'producer' in mesh_repos:
+                        set_state('repo_info', mesh_repos['producer'])
+                        set_state('repository_info', mesh_repos['producer'])
+                        set_state('repo_name', mesh_repos['producer']['repo_name'])
+                else:
+                    # Create single repository
+                    repo_name_override = (
+                        sanitize_repo_name(requested_repo_name)
+                        if requested_repo_name
+                        else None
+                    )
+
+                    repo_info = create_demo_repository(
+                        scenario=scenario,
+                        generated_files=generated_files,
+                        github_token=github_token,
+                        github_username=github_username,
+                        template_repo_url=template_repo_url,
+                        repo_name=repo_name_override
+                    )
+
+                    # Save repository info to session state
+                    set_state('repo_info', repo_info)  # Legacy key for compatibility
+                    set_state('repository_info', repo_info)  # New key for provisioning
+                    set_state('repo_name', repo_info['repo_name'])
+                    if scenario:
+                        set_state(
+                            'repo_name_custom',
+                            repo_info['repo_name'] != default_repo_name(scenario.company_name)
+                        )
 
                 # Navigate to success page
                 set_state('current_page', 'repository_success')
@@ -80,96 +109,124 @@ def render_files_preview_page():
         "Review the generated dbt project files before creating repository"
     )
 
-    # Get generated files from session state
-    if not generated_files:
+    # Check if this is a mesh demo
+    is_mesh = get_state('is_mesh_demo', False)
+    mesh_projects = get_state('mesh_projects', None)
+
+    if is_mesh and mesh_projects:
+        # Show mesh projects
+        st.subheader("🌐 dbt Mesh Demo - Multiple Projects")
         render_info_box(
-            "No generated files found. Please go back and confirm the scenario.",
-            type="warning"
+            f"This is a mesh demo with {len(mesh_projects)} project(s): "
+            f"1 producer and {len(mesh_projects) - 1} consumer(s).",
+            type="info"
         )
-        if st.button("← Back to Scenario"):
-            set_state('current_page', 'scenario_review')
-            st.rerun()
-        return
-
-    # Display file summary
-    summary = generated_files.get_summary()
-    st.subheader("📦 Files Generated")
-
-    # Check if semantic layer is included
-    has_semantic = summary.get('semantic_layer', 0) > 0
-
-    if has_semantic:
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric("Seed Files", summary['seeds'])
-        with col2:
-            st.metric("Model Files", summary['models'])
-        with col3:
-            st.metric("Schema Files", summary['schemas'])
-        with col4:
-            st.metric("Semantic Layer", summary['semantic_layer'])
-        with col5:
-            st.metric("Total Files", summary['total'])
+        
+        # Get producer project name from scenario
+        producer_project_name = scenario.company_name.lower().replace(' ', '_').replace('-', '_')
+        if not producer_project_name[0].isalpha():
+            producer_project_name = 'demo_' + producer_project_name
+        
+        # Show mesh structure overview
+        _render_mesh_structure_overview(mesh_projects, producer_project_name, scenario)
+        
+        st.divider()
+        
+        # Show project tabs
+        project_tabs = st.tabs(['Producer'] + [f'Consumer {i}' for i in range(1, len(mesh_projects))])
+        
+        for idx, (project_key, project_files) in enumerate(mesh_projects.items()):
+            with project_tabs[idx]:
+                if project_key == 'producer':
+                    st.markdown("### 📤 Producer Project")
+                    st.caption("This project contains public models with contracts that can be referenced by consumer projects.")
+                    
+                    # Show which models have contracts
+                    _render_producer_contracts_info(project_files, scenario)
+                else:
+                    consumer_num = project_key.replace('consumer_', '')
+                    st.markdown(f"### 📥 Consumer Project {consumer_num}")
+                    st.caption("This project references public models from the producer project using cross-project refs.")
+                    
+                    # Show cross-project refs
+                    _render_consumer_refs_info(project_files, producer_project_name, consumer_num, scenario)
+                
+                # Display file summary for this project
+                summary = project_files.get_summary()
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Seed Files", summary['seeds'])
+                with col2:
+                    st.metric("Model Files", summary['models'])
+                with col3:
+                    st.metric("Schema Files", summary['schemas'])
+                with col4:
+                    st.metric("Total Files", summary['total'])
+                
+                st.divider()
+                
+                # Show files for this project
+                _render_project_files(project_files, project_key)
+        
+        # Use producer files for repository name default
+        generated_files = mesh_projects['producer']
     else:
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Seed Files", summary['seeds'])
-        with col2:
-            st.metric("Model Files", summary['models'])
-        with col3:
-            st.metric("Schema Files", summary['schemas'])
-        with col4:
-            st.metric("Total Files", summary['total'])
+        # Single project mode
+        # Get generated files from session state
+        if not generated_files:
+            render_info_box(
+                "No generated files found. Please go back and confirm the scenario.",
+                type="warning"
+            )
+            if st.button("← Back to Scenario"):
+                set_state('current_page', 'scenario_review')
+                st.rerun()
+            return
 
-    st.divider()
+        # Display file summary
+        summary = generated_files.get_summary()
+        st.subheader("📦 Files Generated")
+        
+        # Check if semantic layer is included
+        has_semantic = summary.get('semantic_layer', 0) > 0
 
-    # File categories
-    st.subheader("📁 File Browser")
+        if has_semantic:
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Seed Files", summary['seeds'])
+            with col2:
+                st.metric("Model Files", summary['models'])
+            with col3:
+                st.metric("Schema Files", summary['schemas'])
+            with col4:
+                st.metric("Semantic Layer", summary['semantic_layer'])
+            with col5:
+                st.metric("Total Files", summary['total'])
+        else:
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Seed Files", summary['seeds'])
+            with col2:
+                st.metric("Model Files", summary['models'])
+            with col3:
+                st.metric("Schema Files", summary['schemas'])
+            with col4:
+                st.metric("Total Files", summary['total'])
 
-    # Seed files
-    with st.expander("**Seeds/** (Sample Data CSVs)", expanded=True):
-        for filename, content in generated_files.seeds.items():
-            render_file_preview(f"seeds/{filename}", content, language="csv")
-
-    # Model files by layer
-    with st.expander("**Models/Staging/** (Source Data Cleaning)", expanded=True):
-        staging_models = {k: v for k, v in generated_files.models.items() if 'staging' in k}
-        for filepath, content in staging_models.items():
-            render_file_preview(filepath, content, language="sql")
-
-    with st.expander("**Models/Intermediate/** (Business Logic)", expanded=False):
-        int_models = {k: v for k, v in generated_files.models.items() if 'intermediate' in k}
-        for filepath, content in int_models.items():
-            render_file_preview(filepath, content, language="sql")
-
-    with st.expander("**Models/Marts/** (Final Analytics Tables)", expanded=False):
-        marts_models = {k: v for k, v in generated_files.models.items() if 'marts' in k}
-        for filepath, content in marts_models.items():
-            render_file_preview(filepath, content, language="sql")
-
-    # Schema files
-    with st.expander("**Schema Files** (Documentation & Tests)", expanded=False):
-        for filepath, content in generated_files.schemas.items():
-            render_file_preview(filepath, content, language="yaml")
-
-    # Semantic Layer files (if generated)
-    if generated_files.semantic_models or generated_files.metrics_yml:
-        with st.expander("**Semantic Layer** (Metrics & Semantic Models)", expanded=True):
-            # Show semantic models
-            for filepath, content in generated_files.semantic_models.items():
-                render_file_preview(filepath, content, language="yaml")
-            # Show metrics.yml
-            if generated_files.metrics_yml:
-                render_file_preview("models/metrics/metrics.yml", generated_files.metrics_yml, language="yaml")
-
-    # Project config
-    with st.expander("**Project Configuration**", expanded=False):
-        render_file_preview("dbt_project.yml", generated_files.project_yml, language="yaml")
-        render_file_preview("README.md", generated_files.readme, language="markdown")
+        st.divider()
+        
+        _render_project_files(generated_files, 'single')
 
     st.divider()
 
     st.subheader("GitHub Repository Setup")
+    
+    if is_mesh and mesh_projects:
+        render_info_box(
+            f"This mesh demo will create {len(mesh_projects)} separate repositories: "
+            "one for the producer project and one for each consumer project.",
+            type="info"
+        )
 
     # Get config for fallback values
     from src.config.settings import load_config
@@ -330,6 +387,154 @@ def render_files_preview_page():
         ):
             set_state('create_repository_clicked', True)
             st.rerun()
+
+
+def _render_mesh_structure_overview(mesh_projects: dict, producer_project_name: str, scenario):
+    """Render overview of mesh structure with contracts and refs"""
+    with st.expander("🔍 **Mesh Structure Overview** - Contracts & Cross-Project Refs", expanded=True):
+        # Producer contracts
+        st.markdown("#### 📤 Producer Project - Public Models with Contracts")
+        if scenario.marts_models:
+            producer_model = scenario.marts_models[0].name
+            st.markdown(f"- **`{producer_model}`** and other marts models")
+            st.markdown("  - ✅ `access: public`")
+            st.markdown("  - ✅ `contract.enforced: true`")
+            st.markdown("  - ✅ All columns have `not_null` tests")
+        
+        # Consumer refs
+        st.markdown("#### 📥 Consumer Projects - Cross-Project References")
+        consumer_types = [
+            ("Marketing Channels", "marketing_roi_by_channel"),
+            ("Regions", "regional_performance"),
+            ("Product Categories", "category_analysis")
+        ]
+        
+        for i in range(1, len(mesh_projects)):
+            consumer_type, model_name = consumer_types[i - 1]
+            producer_model = scenario.marts_models[0].name if scenario.marts_models else 'monthly_revenue'
+            
+            st.markdown(f"**Consumer {i}** (`{model_name}`):")
+            st.code(f"{{{{ ref('{producer_project_name}', '{producer_model}') }}}}", language="sql")
+            st.caption(f"References producer model via two-argument ref() syntax")
+
+
+def _render_producer_contracts_info(project_files: GeneratedFiles, scenario):
+    """Show which models have contracts in producer project"""
+    # Find marts schema file
+    marts_schema = None
+    for filepath in project_files.schemas.keys():
+        if 'marts' in filepath and 'schema' in filepath:
+            marts_schema = project_files.schemas[filepath]
+            break
+    
+    if marts_schema:
+        import yaml
+        try:
+            schema_dict = yaml.safe_load(marts_schema)
+            if 'models' in schema_dict:
+                public_models = [m for m in schema_dict['models'] if m.get('access') == 'public']
+                if public_models:
+                    st.markdown("**✅ Public Models with Contracts:**")
+                    for model in public_models:
+                        has_contract = 'contract' in model and model.get('contract', {}).get('enforced', False)
+                        contract_badge = "✅ Contract Enforced" if has_contract else "⚠️ No Contract"
+                        st.markdown(f"- **`{model['name']}`** - {contract_badge}")
+                        if has_contract:
+                            st.caption(f"  Contract ensures stable API for downstream consumers")
+        except:
+            pass
+
+
+def _render_consumer_refs_info(project_files: GeneratedFiles, producer_project_name: str, consumer_num: str, scenario):
+    """Show cross-project references in consumer project"""
+    # Find dependencies.yml
+    dependencies_content = None
+    for filepath, content in project_files.schemas.items():
+        if 'dependencies.yml' in filepath:
+            dependencies_content = content
+            break
+    
+    if dependencies_content:
+        st.markdown("**📋 Project Dependencies:**")
+        st.code(dependencies_content, language="yaml")
+    
+    # Find consumer model with cross-project ref
+    consumer_types = [
+        ("Marketing Channels", "marketing_roi_by_channel"),
+        ("Regions", "regional_performance"),
+        ("Product Categories", "category_analysis")
+    ]
+    
+    consumer_idx = int(consumer_num) - 1
+    if 0 <= consumer_idx < len(consumer_types):
+        _, model_name = consumer_types[consumer_idx]
+        model_path = f"models/marts/{model_name}.sql"
+        
+        if model_path in project_files.models:
+            model_content = project_files.models[model_path]
+            # Extract the ref() call
+            import re
+            ref_pattern = r"ref\('([^']+)',\s*'([^']+)'\)"
+            matches = re.findall(ref_pattern, model_content)
+            
+            if matches:
+                st.markdown("**🔗 Cross-Project Reference:**")
+                for proj_name, model_name_ref in matches:
+                    st.code(f"{{{{ ref('{proj_name}', '{model_name_ref}') }}}}", language="sql")
+                    st.caption(f"References `{model_name_ref}` from `{proj_name}` project")
+
+
+def _render_project_files(generated_files: GeneratedFiles, project_key: str):
+    """Helper function to render files for a single project"""
+    # File categories
+    st.subheader("📁 File Browser")
+
+    # Seed files
+    with st.expander("**Seeds/** (Sample Data CSVs)", expanded=True):
+        for filename, content in generated_files.seeds.items():
+            render_file_preview(f"seeds/{filename}", content, language="csv")
+
+    # Model files by layer
+    with st.expander("**Models/Staging/** (Source Data Cleaning)", expanded=True):
+        staging_models = {k: v for k, v in generated_files.models.items() if 'staging' in k}
+        for filepath, content in staging_models.items():
+            render_file_preview(filepath, content, language="sql")
+
+    with st.expander("**Models/Intermediate/** (Business Logic)", expanded=False):
+        int_models = {k: v for k, v in generated_files.models.items() if 'intermediate' in k}
+        for filepath, content in int_models.items():
+            render_file_preview(filepath, content, language="sql")
+
+    with st.expander("**Models/Marts/** (Final Analytics Tables)", expanded=False):
+        marts_models = {k: v for k, v in generated_files.models.items() if 'marts' in k}
+        for filepath, content in marts_models.items():
+            render_file_preview(filepath, content, language="sql")
+
+    # Schema files and dependencies.yml
+    with st.expander("**Schema Files** (Documentation & Tests)", expanded=False):
+        for filepath, content in generated_files.schemas.items():
+            if filepath == 'dependencies.yml':
+                st.markdown("**`dependencies.yml`** (Project Dependencies)")
+                st.caption("Defines cross-project dependencies for dbt Mesh")
+                st.code(content, language="yaml", line_numbers=True)
+                st.divider()
+            else:
+                render_file_preview(filepath, content, language="yaml")
+
+    # Semantic Layer files (if generated)
+    if generated_files.semantic_models or generated_files.metrics_yml:
+        with st.expander("**Semantic Layer** (Metrics & Semantic Models)", expanded=True):
+            # Show semantic models
+            for filepath, content in generated_files.semantic_models.items():
+                render_file_preview(filepath, content, language="yaml")
+            # Show metrics.yml
+            if generated_files.metrics_yml:
+                render_file_preview("models/metrics/metrics.yml", generated_files.metrics_yml, language="yaml")
+
+    # Project config
+    with st.expander("**Project Configuration**", expanded=False):
+        render_file_preview("dbt_project.yml", generated_files.project_yml, language="yaml")
+        render_file_preview("README.md", generated_files.readme, language="markdown")
 
 
 def render_file_preview(filepath: str, content: str, language: str = "text"):

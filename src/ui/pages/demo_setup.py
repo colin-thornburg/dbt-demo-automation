@@ -101,6 +101,33 @@ def render_demo_inputs_section():
     )
     set_state('include_semantic_layer', semantic)
 
+    # Mesh Demo
+    st.markdown("---")
+    mesh_demo = st.checkbox(
+        "Enable dbt Mesh Demo (Cross-Project References)",
+        value=get_state('mesh_demo', False),
+        help="Generate multiple dbt projects to demonstrate cross-project references and model contracts",
+        key="input_mesh_demo"
+    )
+    set_state('mesh_demo', mesh_demo)
+
+    if mesh_demo:
+        num_downstream = st.number_input(
+            "Number of Downstream Projects",
+            min_value=1,
+            max_value=3,
+            value=get_state('num_downstream_projects', 1),
+            help="Number of consumer projects that will reference the producer project (1-3)",
+            key="input_num_downstream_projects"
+        )
+        set_state('num_downstream_projects', num_downstream)
+        
+        render_info_box(
+            "Mesh demo will create a producer project with public models and contracts, "
+            f"plus {num_downstream} consumer project(s) that reference them via cross-project refs.",
+            type="info"
+        )
+
 
 def render_ai_config_section():
     """Render the AI configuration section"""
@@ -604,6 +631,11 @@ def render_demo_setup_page():
         pain = get_state('pain_points', '')
         st.write("**Pain Points:**", pain if pain else "(empty)")
         st.write("**Semantic Layer:**", get_state('include_semantic_layer', False))
+        st.write("**Mesh Demo:**", get_state('mesh_demo', False))
+        if get_state('mesh_demo', False):
+            st.write("**Number of Downstream Projects:**", get_state('num_downstream_projects', 1))
+        st.write("**AI Provider:**", get_state('ai_provider', 'Not set'))
+        st.write("**AI Model:**", get_state('ai_model', 'Not set'))
 
     # Action buttons
     col1, col2, col3 = st.columns([2, 1, 1])

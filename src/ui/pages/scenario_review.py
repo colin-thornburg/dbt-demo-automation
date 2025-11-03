@@ -80,6 +80,81 @@ def render_metrics_and_talking_points(scenario: DemoScenario):
             st.markdown(f"{i}. {point}")
 
 
+def render_mesh_demo_overview(scenario: DemoScenario, num_downstream: int):
+    """Render mesh demo structure overview"""
+    st.markdown("---")
+    st.subheader("🌐 dbt Mesh Demo Structure")
+    
+    # Get producer project name
+    producer_project_name = scenario.company_name.lower().replace(' ', '_').replace('-', '_')
+    if not producer_project_name[0].isalpha():
+        producer_project_name = 'demo_' + producer_project_name
+    
+    render_info_box(
+        f"This mesh demo will create **{num_downstream + 1} projects**: "
+        f"1 producer project and {num_downstream} consumer project(s). "
+        "The producer exposes public models with contracts, and consumers reference them via cross-project refs.",
+        type="info"
+    )
+    
+    # Producer Project Details
+    with st.expander("📤 **Producer Project** - Public Models & Contracts", expanded=True):
+        st.markdown(f"**Project Name:** `{producer_project_name}`")
+        st.markdown("**Purpose:** Contains public models that downstream projects can reference")
+        
+        st.markdown("**Public Models (with Contracts):**")
+        if scenario.marts_models:
+            for model in scenario.marts_models[:3]:  # Show first 3 marts models
+                st.markdown(f"- **`{model.name}`**")
+                st.caption(f"  {model.description}")
+                st.caption(f"  ✅ Will have `access: public` and `contract.enforced: true`")
+        
+        st.markdown("**Contract Requirements:**")
+        st.markdown("""
+        - All public models will have model contracts enabled
+        - Contracts enforce column data types and constraints
+        - Ensures stable API for downstream consumers
+        - All columns marked as `not_null` for contract compliance
+        """)
+    
+    # Consumer Projects Details
+    consumer_types = [
+        ("Marketing Channels", "marketing_channels.csv", "marketing_roi_by_channel"),
+        ("Regions", "regions.csv", "regional_performance"),
+        ("Product Categories", "product_categories.csv", "category_analysis")
+    ]
+    
+    for i in range(1, num_downstream + 1):
+        consumer_type, seed_file, model_name = consumer_types[i - 1]
+        consumer_project_name = f"{producer_project_name}_consumer_{i}"
+        
+        with st.expander(f"📥 **Consumer Project {i}** - Cross-Project References", expanded=True):
+            st.markdown(f"**Project Name:** `{consumer_project_name}`")
+            st.markdown(f"**Focus:** {consumer_type} analysis")
+            
+            st.markdown("**What's Included:**")
+            st.markdown(f"- **Seed Data:** `{seed_file}`")
+            st.markdown(f"  - Reference data for {consumer_type.lower()}")
+            
+            # Get producer model name for reference
+            producer_model = scenario.marts_models[0].name if scenario.marts_models else 'monthly_revenue'
+            
+            st.markdown(f"- **Model:** `{model_name}`")
+            st.markdown(f"  - Combines local seed data with producer model")
+            st.markdown(f"  - Uses cross-project reference: `{{{{ ref('{producer_project_name}', '{producer_model}') }}}}`")
+            
+            st.markdown("**Cross-Project Reference Syntax:**")
+            st.code(f"{{{{ ref('{producer_project_name}', '{producer_model}') }}}}", language="sql")
+            st.caption("Two-argument ref() syntax: (project_name, model_name)")
+            
+            st.markdown("**Dependencies Configuration:**")
+            st.code(f"""projects:
+  - name: {producer_project_name}""", language="yaml")
+            st.caption("Defined in `dependencies.yml`")
+    
+    st.markdown("---")
+
+
 def summarize_scenario_changes(old: DemoScenario, new: DemoScenario) -> List[str]:
     """Generate a human-friendly summary of differences between two scenarios."""
 
@@ -206,21 +281,40 @@ def render_scenario_review_page():
 
         with st.spinner("📁 Generating dbt project files..."):
             try:
-                from src.file_generation import generate_all_files
+                from src.file_generation import generate_all_files, generate_mesh_projects
 
                 # Get scenario
                 scenario = get_state('demo_scenario')
+                mesh_demo = get_state('mesh_demo', False)
+                num_downstream = get_state('num_downstream_projects', 1)
 
-                # Generate all files
-                generated_files = generate_all_files(
-                    scenario,
-                    num_seed_rows=20,
-                    dbt_cloud_project_id=get_state('dbt_cloud_project_id', '').strip() or None,
-                    include_semantic_layer=get_state('include_semantic_layer', False)
-                )
-
-                # Save to session state
-                set_state('generated_files', generated_files)
+                if mesh_demo:
+                    # Generate mesh projects
+                    mesh_projects = generate_mesh_projects(
+                        scenario,
+                        num_downstream_projects=num_downstream,
+                        num_seed_rows=20,
+                        dbt_cloud_project_id=get_state('dbt_cloud_project_id', '').strip() or None,
+                        include_semantic_layer=get_state('include_semantic_layer', False)
+                    )
+                    
+                    # Save to session state
+                    set_state('generated_files', mesh_projects['producer'])  # Legacy - use producer for compatibility
+                    set_state('mesh_projects', mesh_projects)
+                    set_state('is_mesh_demo', True)
+                else:
+                    # Generate single project
+                    generated_files = generate_all_files(
+                        scenario,
+                        num_seed_rows=20,
+                        dbt_cloud_project_id=get_state('dbt_cloud_project_id', '').strip() or None,
+                        include_semantic_layer=get_state('include_semantic_layer', False)
+                    )
+                    
+                    # Save to session state
+                    set_state('generated_files', generated_files)
+                    set_state('mesh_projects', None)
+                    set_state('is_mesh_demo', False)
 
                 # Navigate to files preview page
                 set_state('current_page', 'files_preview')
@@ -319,6 +413,14 @@ def render_scenario_review_page():
 
     # Display prospect info
     st.markdown(f"**Company:** {scenario.company_name} | **Industry:** {scenario.industry}")
+    
+    # Check if this is a mesh demo and show mesh structure
+    is_mesh = get_state('mesh_demo', False)
+    num_downstream = get_state('num_downstream_projects', 1)
+    
+    if is_mesh:
+        render_mesh_demo_overview(scenario, num_downstream)
+    
     st.divider()
 
     # Render scenario sections

@@ -18,9 +18,11 @@ def render_repository_success_page():
 
     # Get repository info from session state
     repo_info = get_state('repo_info')
+    mesh_repos = get_state('mesh_repositories', None)
+    is_mesh = get_state('is_mesh_demo', False)
     scenario = get_state('demo_scenario')
 
-    if not repo_info:
+    if not repo_info and not mesh_repos:
         render_info_box(
             "No repository information found. Please try creating the repository again.",
             type="warning"
@@ -31,32 +33,66 @@ def render_repository_success_page():
         return
 
     # Display success information
-    st.success(f"✅ Repository '{repo_info['repo_name']}' has been created and all files have been pushed!")
+    if is_mesh and mesh_repos:
+        st.success(f"✅ {len(mesh_repos)} repositories created successfully for dbt Mesh demo!")
+    else:
+        st.success(f"✅ Repository '{repo_info['repo_name']}' has been created and all files have been pushed!")
 
     # Repository details
-    st.subheader("📦 Repository Details")
+    if is_mesh and mesh_repos:
+        st.subheader("🌐 Mesh Demo Repositories")
+        render_info_box(
+            f"Created {len(mesh_repos)} repositories: 1 producer and {len(mesh_repos) - 1} consumer(s).",
+            type="info"
+        )
+        
+        # Show all repositories
+        for project_key, repo_info in mesh_repos.items():
+            if project_key == 'producer':
+                title = f"📤 Producer: {repo_info['repo_name']}"
+            else:
+                consumer_num = project_key.replace('consumer_', '')
+                title = f"📥 Consumer {consumer_num}: {repo_info['repo_name']}"
+            
+            with st.expander(
+                title,
+                expanded=(project_key == 'producer')
+            ):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Repository Name:**")
+                    st.code(repo_info['repo_name'])
+                    st.markdown("**Repository URL:**")
+                    st.markdown(f"[{repo_info['repo_url']}]({repo_info['repo_url']})")
+                with col2:
+                    st.markdown("**Clone URL:**")
+                    st.code(repo_info['clone_url'], language="bash")
+                    st.markdown("**Visibility:**")
+                    st.code("Private")
+    else:
+        st.subheader("📦 Repository Details")
 
-    col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
-    with col1:
-        st.markdown("**Repository Name:**")
-        st.code(repo_info['repo_name'])
+        with col1:
+            st.markdown("**Repository Name:**")
+            st.code(repo_info['repo_name'])
 
-        st.markdown("**Company:**")
-        st.code(scenario.company_name)
+            st.markdown("**Company:**")
+            st.code(scenario.company_name)
 
-        st.markdown("**Industry:**")
-        st.code(scenario.industry)
+            st.markdown("**Industry:**")
+            st.code(scenario.industry)
 
-    with col2:
-        st.markdown("**Repository URL:**")
-        st.markdown(f"[{repo_info['repo_url']}]({repo_info['repo_url']})")
+        with col2:
+            st.markdown("**Repository URL:**")
+            st.markdown(f"[{repo_info['repo_url']}]({repo_info['repo_url']})")
 
-        st.markdown("**Clone URL:**")
-        st.code(repo_info['clone_url'], language="bash")
+            st.markdown("**Clone URL:**")
+            st.code(repo_info['clone_url'], language="bash")
 
-        st.markdown("**Visibility:**")
-        st.code("Private")
+            st.markdown("**Visibility:**")
+            st.code("Private")
 
     st.divider()
 

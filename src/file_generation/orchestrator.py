@@ -3,13 +3,14 @@ File Generation Orchestrator
 Coordinates the generation of all dbt project files
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from src.ai.scenario_generator import DemoScenario
 from .seed_generator import generate_seed_csvs
 from .model_generator import generate_dbt_models
 from .schema_generator import generate_schema_yml
 from .project_generator import generate_dbt_project_yml
 from .semantic_layer_generator import generate_semantic_models, generate_metrics_yml
+from .mesh_generator import generate_producer_project, generate_consumer_project
 
 
 class GeneratedFiles:
@@ -238,3 +239,90 @@ def generate_readme(scenario: DemoScenario) -> str:
 """
 
     return readme
+
+
+def generate_mesh_projects(
+    scenario: DemoScenario,
+    num_downstream_projects: int,
+    num_seed_rows: int = 20,
+    dbt_cloud_project_id: Optional[str] = None,
+    include_semantic_layer: bool = False
+) -> Dict[str, GeneratedFiles]:
+    """
+    Generate multiple projects for dbt Mesh demo
+    
+    Args:
+        scenario: The demo scenario (used for producer)
+        num_downstream_projects: Number of consumer projects to create (1-3)
+        num_seed_rows: Number of rows to generate in seed files
+        dbt_cloud_project_id: Optional dbt Cloud project ID
+        include_semantic_layer: Whether to include semantic layer
+        
+    Returns:
+        Dictionary mapping project name to GeneratedFiles object
+        Keys: 'producer', 'consumer_1', 'consumer_2', 'consumer_3'
+    """
+    projects = {}
+    
+    # Get producer project name
+    producer_project_name = scenario.company_name.lower().replace(' ', '_').replace('-', '_')
+    if not producer_project_name[0].isalpha():
+        producer_project_name = 'demo_' + producer_project_name
+    
+    # Generate producer project
+    producer_files_dict = generate_producer_project(
+        scenario,
+        dbt_cloud_project_id=dbt_cloud_project_id,
+        include_semantic_layer=include_semantic_layer
+    )
+    
+    # Convert to GeneratedFiles object
+    producer_files = GeneratedFiles()
+    for filepath, content in producer_files_dict.items():
+        if filepath.startswith('seeds/'):
+            filename = filepath.replace('seeds/', '')
+            producer_files.seeds[filename] = content
+        elif filepath.startswith('models/'):
+            producer_files.models[filepath] = content
+        elif filepath.endswith('.yml') or filepath.endswith('.yaml'):
+            if 'metrics' in filepath:
+                producer_files.metrics_yml = content
+            else:
+                producer_files.schemas[filepath] = content
+        elif filepath == 'dbt_project.yml':
+            producer_files.project_yml = content
+        elif filepath == 'README.md':
+            producer_files.readme = content
+    
+    projects['producer'] = producer_files
+    
+    # Generate consumer projects
+    for i in range(1, num_downstream_projects + 1):
+        consumer_files_dict = generate_consumer_project(
+            producer_scenario=scenario,
+            consumer_index=i,
+            producer_project_name=producer_project_name,
+            dbt_cloud_project_id=dbt_cloud_project_id
+        )
+        
+        # Convert to GeneratedFiles object
+        consumer_files = GeneratedFiles()
+        for filepath, content in consumer_files_dict.items():
+            if filepath.startswith('seeds/'):
+                filename = filepath.replace('seeds/', '')
+                consumer_files.seeds[filename] = content
+            elif filepath.startswith('models/'):
+                consumer_files.models[filepath] = content
+            elif filepath.endswith('.yml') or filepath.endswith('.yaml'):
+                consumer_files.schemas[filepath] = content
+            elif filepath == 'dependencies.yml':
+                # Store dependencies.yml in schemas for now
+                consumer_files.schemas[filepath] = content
+            elif filepath == 'dbt_project.yml':
+                consumer_files.project_yml = content
+            elif filepath == 'README.md':
+                consumer_files.readme = content
+        
+        projects[f'consumer_{i}'] = consumer_files
+    
+    return projects

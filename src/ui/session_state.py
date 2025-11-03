@@ -22,6 +22,8 @@ def initialize_session_state():
         'discovery_notes': '',
         'pain_points': '',
         'include_semantic_layer': False,
+        'mesh_demo': False,
+        'num_downstream_projects': 1,
 
         # AI Configuration
         'ai_provider': 'claude',
@@ -46,6 +48,8 @@ def initialize_session_state():
         # Generated Content (will be populated later)
         'demo_scenario': None,
         'generated_files': None,
+        'mesh_projects': None,  # Dictionary of projects for mesh demo
+        'is_mesh_demo': False,  # Flag indicating if this is a mesh demo
         'github_repo_url': None,
         'dbt_project_url': None,
         'regeneration_feedback': '',
@@ -54,6 +58,7 @@ def initialize_session_state():
         'repo_name': '',
         'repo_name_custom': False,
         'repository_info': None,  # Info from GitHub repo creation
+        'mesh_repositories': None,  # Dictionary of repositories for mesh demo
         
         # Terraform/Provisioning State
         'provisioning_result': None,  # Result from Terraform apply
