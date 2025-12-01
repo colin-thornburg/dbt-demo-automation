@@ -22,3 +22,7 @@ python-dotenv>=1.0.0
 
 # Utilities
 pandas>=2.1.0
+
+# API Framework (for React frontend)
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0

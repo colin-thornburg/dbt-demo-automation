@@ -80,14 +80,20 @@ class TerraformExecutor:
                 return_code=-1
             )
     
-    def init(self) -> TerraformResult:
+    def init(self, upgrade: bool = False) -> TerraformResult:
         """
         Run terraform init
+        
+        Args:
+            upgrade: Whether to upgrade provider versions
         
         Returns:
             TerraformResult object
         """
-        return self._run_command(['init'])
+        args = ['init']
+        if upgrade:
+            args.append('-upgrade')
+        return self._run_command(args)
     
     def plan(self) -> TerraformResult:
         """
@@ -204,5 +210,8 @@ def apply_terraform_config(
     results['output'] = executor.output()
     
     return results
+
+
+
 
 

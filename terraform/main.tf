@@ -18,7 +18,7 @@ resource "dbtcloud_project_repository" "demo_project_repo" {
   repository_id = dbtcloud_repository.demo_repo.repository_id
 }
 
-# Snowflake Connection
+# Snowflake Connection (deprecated but still works in v0.3.26)
 resource "dbtcloud_connection" "snowflake" {
   project_id = dbtcloud_project.demo_project.id
   name       = "Snowflake"
@@ -60,10 +60,10 @@ resource "dbtcloud_environment" "development" {
   
   connection_id = dbtcloud_connection.snowflake.connection_id
   credential_id = dbtcloud_snowflake_credential.dev_credentials.credential_id
-  repository_id = dbtcloud_repository.demo_repo.repository_id
 
   depends_on = [
-    dbtcloud_project_repository.demo_project_repo
+    dbtcloud_project_repository.demo_project_repo,
+    dbtcloud_project_connection.demo_project_connection
   ]
 }
 
@@ -90,10 +90,10 @@ resource "dbtcloud_environment" "production" {
   
   connection_id = dbtcloud_connection.snowflake.connection_id
   credential_id = dbtcloud_snowflake_credential.prod_credentials.credential_id
-  repository_id = dbtcloud_repository.demo_repo.repository_id
 
   depends_on = [
-    dbtcloud_project_repository.demo_project_repo
+    dbtcloud_project_repository.demo_project_repo,
+    dbtcloud_project_connection.demo_project_connection
   ]
 }
 

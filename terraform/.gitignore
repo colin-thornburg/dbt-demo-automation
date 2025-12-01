@@ -27,4 +27,13 @@ terraform.rc
 generated_*.tf
 *.auto.tfvars
 
+# Session directories (generated per demo run)
+session_*/
+
+
+
+
+
+
+
 

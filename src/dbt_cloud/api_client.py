@@ -6,6 +6,72 @@ Handles API calls to dbt Cloud for job triggering and management
 import requests
 from typing import Dict, Optional
 import time
+import re
+
+
+def convert_github_url_to_git_format(url: str) -> str:
+    """
+    Convert GitHub HTTPS URL to git:// format with .git suffix
+    
+    Examples:
+        https://github.com/user/repo -> git://github.com/user/repo.git
+        https://github.com/user/repo.git -> git://github.com/user/repo.git
+        git://github.com/user/repo.git -> git://github.com/user/repo.git (no change)
+    
+    Args:
+        url: GitHub repository URL in any format
+    
+    Returns:
+        URL in git:// format with .git suffix
+    """
+    if not url:
+        return url
+    
+    # If already in git:// format, ensure it has .git suffix
+    if url.startswith("git://"):
+        if not url.endswith(".git"):
+            return url + ".git"
+        return url
+    
+    # Convert https://github.com/user/repo to git://github.com/user/repo.git
+    # Handle both with and without .git suffix
+    pattern = r'https?://github\.com/([^/]+/[^/]+?)(?:\.git)?/?$'
+    match = re.match(pattern, url)
+    if match:
+        repo_path = match.group(1)
+        return f"git://github.com/{repo_path}.git"
+    
+    # If pattern doesn't match, return as-is (might be SSH format or other)
+    return url
+
+
+def generate_pr_url_template(repo_url: str) -> str:
+    """
+    Generate PR URL template from repository URL
+    
+    Args:
+        repo_url: Repository URL in any format
+    
+    Returns:
+        PR URL template, e.g., "https://github.com/{owner}/{repo}/pull/{number}"
+    """
+    if not repo_url:
+        return ""
+    
+    # Extract owner/repo from various URL formats
+    patterns = [
+        r'github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$',  # https://github.com/owner/repo
+        r'git://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$',  # git://github.com/owner/repo.git
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, repo_url)
+        if match:
+            owner = match.group(1)
+            repo = match.group(2).rstrip('.git')
+            return f"https://github.com/{owner}/{repo}/pull/{{number}}"
+    
+    return ""
 
 
 class DbtCloudApiClient:
@@ -23,8 +89,14 @@ class DbtCloudApiClient:
         self.account_id = account_id
         self.api_token = api_token
         self.base_url = f"https://{host}/api/v2/accounts/{account_id}"
+        self.base_url_v3 = f"https://{host}/api/v3/accounts/{account_id}"
         self.headers = {
             "Authorization": f"Token {api_token}",
+            "Content-Type": "application/json"
+        }
+        # v3 API uses Bearer token instead of Token
+        self.headers_v3 = {
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
     
@@ -187,6 +259,123 @@ class DbtCloudApiClient:
         }
         
         response = requests.post(url, json=payload, headers=self.headers)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def get_connection(self, project_id: str, connection_id: str) -> Dict:
+        """
+        Get details of a specific connection
+        
+        Args:
+            project_id: Project ID
+            connection_id: Connection ID
+        
+        Returns:
+            Dictionary with connection details
+        """
+        url = f"{self.base_url}/projects/{project_id}/connections/{connection_id}/"
+        
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def list_connections(self, project_id: str) -> Dict:
+        """
+        List all connections for a project
+        
+        Args:
+            project_id: Project ID
+        
+        Returns:
+            Dictionary with list of connections
+        """
+        url = f"{self.base_url}/projects/{project_id}/connections/"
+        
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def get_environment(self, project_id: str, environment_id: str) -> Dict:
+        """
+        Get details of a specific environment
+        
+        Args:
+            project_id: Project ID
+            environment_id: Environment ID
+        
+        Returns:
+            Dictionary with environment details including connection and credential info
+        """
+        url = f"{self.base_url}/projects/{project_id}/environments/{environment_id}/"
+        
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def list_environments(self, project_id: str) -> Dict:
+        """
+        List all environments for a project
+        
+        Args:
+            project_id: Project ID
+        
+        Returns:
+            Dictionary with list of environments
+        """
+        url = f"{self.base_url}/projects/{project_id}/environments/"
+        
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def update_repository_v3(
+        self,
+        project_id: str,
+        repository_id: int,
+        remote_url: Optional[str] = None,
+        github_installation_id: Optional[int] = None,
+        git_clone_strategy: Optional[str] = None,
+        pull_request_url_template: Optional[str] = None
+    ) -> Dict:
+        """
+        Update a repository using dbt Cloud API v3 (Admin API)
+        
+        This endpoint is more reliable for resolving timing issues with repository creation.
+        Uses PATCH method and Bearer token authentication.
+        
+        Reference: https://docs.getdbt.com/dbt-cloud/api-v3#/operations/Update%20Repository
+        
+        Args:
+            project_id: Project ID
+            repository_id: Repository ID
+            remote_url: GitHub repository URL (optional) - should be in git:// format with .git suffix
+            github_installation_id: GitHub App installation ID (optional)
+            git_clone_strategy: Git clone strategy, e.g., "github_app" (optional)
+            pull_request_url_template: PR URL template, e.g., "https://github.com/{owner}/{repo}/pull/{number}" (optional)
+        
+        Returns:
+            Updated repository information
+        """
+        url = f"{self.base_url_v3}/projects/{project_id}/repositories/{repository_id}/"
+        
+        # Build payload with only provided fields
+        payload = {}
+        if remote_url is not None:
+            payload["remote_url"] = remote_url
+        if github_installation_id is not None:
+            payload["github_installation_id"] = github_installation_id
+        if git_clone_strategy is not None:
+            payload["git_clone_strategy"] = git_clone_strategy
+        if pull_request_url_template is not None:
+            payload["pull_request_url_template"] = pull_request_url_template
+        
+        # Use PATCH method for v3 API
+        response = requests.patch(url, json=payload, headers=self.headers_v3)
         response.raise_for_status()
         
         return response.json()

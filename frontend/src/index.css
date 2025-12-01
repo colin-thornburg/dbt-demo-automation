@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white text-dbt-gray-900 font-sans;
+  }
+  
+  /* Remove gray background from inputs */
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  input[type="email"],
+  textarea,
+  select {
+    @apply bg-white;
+  }
+  
+  /* Improve autofill styling */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px white inset !important;
+    -webkit-text-fill-color: #111827 !important;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-dbt-orange hover:bg-orange-600 active:bg-orange-700 
+           text-white font-semibold px-5 py-2.5 rounded-lg 
+           shadow-sm hover:shadow transition-all duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-white border-2 border-dbt-gray-300 hover:bg-dbt-gray-50 hover:border-dbt-gray-400
+           text-dbt-gray-700 font-semibold px-5 py-2.5 rounded-lg 
+           shadow-sm hover:shadow transition-all duration-200;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-white border border-dbt-gray-300 rounded-lg 
+           text-dbt-gray-900 placeholder:text-dbt-gray-400
+           focus:outline-none focus:ring-2 focus:ring-dbt-orange/50 focus:border-dbt-orange
+           hover:border-dbt-gray-400
+           disabled:bg-dbt-gray-50 disabled:text-dbt-gray-500 disabled:cursor-not-allowed
+           transition-all duration-200;
+  }
+  
+  /* Textarea specific styling */
+  textarea.input-field {
+    @apply resize-y min-h-[100px];
+  }
+  
+  /* Select dropdown styling */
+  select.input-field {
+    @apply cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236B7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em] bg-[right_0.5rem_center] bg-no-repeat pr-10;
+  }
+  
+  /* Checkbox styling */
+  input[type="checkbox"] {
+    @apply cursor-pointer focus:ring-2 focus:ring-dbt-orange/50 focus:ring-offset-2 transition-all;
+  }
+  
+  .card {
+    @apply bg-white border border-dbt-gray-200 rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow duration-200;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badge-success {
+    @apply bg-dbt-green/10 text-dbt-green;
+  }
+  
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+  
+  .badge-purple {
+    @apply bg-dbt-purple/10 text-dbt-purple;
+  }
+}
+

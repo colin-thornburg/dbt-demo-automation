@@ -15,7 +15,7 @@ output "repository_id" {
 
 output "connection_id" {
   description = "The ID of the Snowflake connection"
-  value       = dbtcloud_connection.snowflake.id
+  value       = dbtcloud_connection.snowflake.connection_id
 }
 
 output "dev_environment_id" {
