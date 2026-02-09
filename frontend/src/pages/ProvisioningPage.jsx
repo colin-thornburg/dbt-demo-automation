@@ -311,9 +311,12 @@ export default function ProvisioningPage() {
         </>
       )}
 
-      <div className="flex justify-end">
-        <button onClick={() => navigate('/success')} className="btn-primary">
-          View Success Page →
+      <div className="flex justify-end space-x-3">
+        <button onClick={() => navigate('/build-validate')} className="btn-primary">
+          Build & Validate →
+        </button>
+        <button onClick={() => navigate('/success')} className="btn-secondary">
+          Skip to Success →
         </button>
       </div>
     </div>

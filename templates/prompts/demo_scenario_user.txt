@@ -16,15 +16,21 @@ Create a demo scenario that includes:
 
 1. **Demo Overview**: A 2-3 sentence summary that directly references their specific use case from the discovery notes
 2. **Business Context**: What specific business problem are they trying to solve (based on discovery notes)?
-3. **Data Sources**: 3-5 realistic source tables that would ACTUALLY be used for their described analytics use case (with descriptions). For example:
-   - If they do customer segmentation → include customer behavior, campaign response, demographic data
-   - If they do predictive modeling → include historical performance, features for predictions
-   - If they do marketing optimization → include campaign, channel, conversion data
-   Each table **must** include an explicit primary key column and list any foreign key columns that reference other tables.
+3. **Data Sources**: 3-5 realistic source tables that would ACTUALLY be used for their described analytics use case (with descriptions).
+
+   MANDATORY RULES FOR DATA SOURCES:
+   - Every table MUST have `id` as its FIRST column (this is the primary key)
+   - Order tables so that parent/reference tables come BEFORE tables that reference them
+   - Foreign key columns MUST be named `{{entity_singular}}_id` where `{{entity_singular}}` is the singular form of the referenced table name WITHOUT the `raw_` prefix
+   - Example: `raw_customers` comes before `raw_orders`, and `raw_orders` has a column `customer_id`
+   - Example: `raw_products` comes before `raw_order_items`, and `raw_order_items` has columns `order_id` and `product_id`
+   - Include a mix of dimension (lookup) tables and fact (event/transaction) tables
+   - Each table should have 5-10 columns including `id` and any foreign keys
+
 4. **dbt Models Architecture** (must directly enable their described analytics use case):
-   - **Staging Models** (3-5 models): Clean and rename source data that feeds into their specific analytics. Clearly map column renames so downstream models reference existing fields.
-   - **Intermediate Models** (2-4 models): Business logic transformations that build the features, aggregations, or derived data needed for their specific use case. Ensure every join uses columns that exist in upstream models (e.g. join `orders.customer_id` to `customers.customer_id`). Never join on generic `id` columns unless they are explicitly defined.
-   - **Marts Models** (2-3 models): Final analytics-ready tables that directly support the analytics they described (e.g., customer segments, campaign performance, predictive features). Highlight the grain of each mart and reuse the same join keys introduced earlier.
+   - **Staging Models** (3-5 models): Clean and rename source data. Each staging model's `source_table` must EXACTLY match a data source `name`. Staging models should be named `stg_{{source_name_without_raw_prefix}}`.
+   - **Intermediate Models** (2-4 models): Business logic transformations that join staging models. `depends_on` must list exact staging model names. Joins will use the foreign key columns defined in the source tables.
+   - **Marts Models** (2-3 models): Final analytics-ready tables. `depends_on` must list exact intermediate or staging model names.
    {incremental_section}
 5. **Key Metrics**: 3-5 business metrics that align with their described analytics initiatives (not generic metrics)
 6. **Demo Talking Points**: 5-7 key points to emphasize during the demo, with at least 3 directly referencing how dbt enables their specific use case
@@ -33,52 +39,64 @@ Create a demo scenario that includes:
 **IMPORTANT**: Return ONLY valid JSON in this exact format:
 
 ```json
-{{
+{{{{
   "demo_overview": "string",
   "business_context": "string",
   "data_sources": [
-    {{
-      "name": "string",
-      "description": "string",
-      "columns": ["col1", "col2", "col3"]
-    }}
+    {{{{
+      "name": "raw_customers",
+      "description": "Customer dimension table",
+      "columns": ["id", "first_name", "last_name", "email", "created_at"]
+    }}}},
+    {{{{
+      "name": "raw_orders",
+      "description": "Order fact table",
+      "columns": ["id", "customer_id", "order_date", "status", "total_amount"]
+    }}}}
   ],
   "staging_models": [
-    {{
-      "name": "string",
-      "description": "string",
-      "source_table": "string"
-    }}
+    {{{{
+      "name": "stg_customers",
+      "description": "Cleaned customer data",
+      "source_table": "raw_customers"
+    }}}}
   ],
   "intermediate_models": [
-    {{
-      "name": "string",
-      "description": "string",
-      "depends_on": ["model1", "model2"]
-    }}
+    {{{{
+      "name": "int_orders_enriched",
+      "description": "Orders joined with customer data",
+      "depends_on": ["stg_orders", "stg_customers"]
+    }}}}
   ],
   "marts_models": [
-    {{
-      "name": "string",
-      "description": "string",
-      "depends_on": ["model1", "model2"],
+    {{{{
+      "name": "fct_orders",
+      "description": "Order fact table for analytics",
+      "depends_on": ["int_orders_enriched"],
       "is_incremental": false
-    }}
+    }}}}
   ],
   "key_metrics": [
-    {{
-      "name": "string",
-      "description": "string",
-      "calculation": "string"
-    }}
+    {{{{
+      "name": "Total Revenue",
+      "description": "Sum of all order amounts",
+      "calculation": "SUM(total_amount)"
+    }}}}
   ],
   "talking_points": [
     "string"
   ]
-}}
+}}}}
 ```
 
-All references between models must use columns that were defined earlier in the scenario. Avoid introducing new column names in joins.
+CRITICAL RULES — your JSON MUST follow these:
+- Every data source `columns` array MUST start with `id`
+- Foreign key columns MUST use the exact pattern `{{entity_singular}}_id` matching another table's name (minus the `raw_` prefix, singularized)
+- `source_table` in staging models MUST exactly match a `name` in `data_sources`
+- `depends_on` in intermediate/mart models MUST exactly match model `name` values
+- Order `data_sources` so parent tables come first (tables with no foreign keys before tables that reference them)
+- Include `created_at` and/or `updated_at` columns in tables where it makes sense
+- Use at least one `is_incremental: true` mart model that has `updated_at` in its dependency chain
 
 **FINAL REMINDER:** 
 - Make the entire demo scenario authentic to what {company_name} is actually trying to do (as described in discovery notes)

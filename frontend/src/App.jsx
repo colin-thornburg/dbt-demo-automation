@@ -6,6 +6,7 @@ import ReviewPage from './pages/ReviewPage'
 import FilesPage from './pages/FilesPage'
 import RepositoryPage from './pages/RepositoryPage'
 import ProvisioningPage from './pages/ProvisioningPage'
+import BuildValidatePage from './pages/BuildValidatePage'
 import SuccessPage from './pages/SuccessPage'
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
             <Route path="/files" element={<FilesPage />} />
             <Route path="/repository" element={<RepositoryPage />} />
             <Route path="/provisioning" element={<ProvisioningPage />} />
+            <Route path="/build-validate" element={<BuildValidatePage />} />
             <Route path="/success" element={<SuccessPage />} />
           </Routes>
         </Layout>

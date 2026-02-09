@@ -5,7 +5,6 @@ Supports both Claude (Anthropic) and OpenAI
 
 from abc import ABC, abstractmethod
 from typing import Optional
-import json
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -15,13 +14,21 @@ class AIProvider(ABC):
     """Abstract base class for AI providers"""
 
     @abstractmethod
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
         """
         Generate text from a prompt
 
         Args:
             prompt: User prompt
             system_prompt: Optional system prompt
+            temperature: Optional temperature override (0.0–1.0)
+            max_tokens: Optional max_tokens override
 
         Returns:
             Generated text response
@@ -32,7 +39,7 @@ class AIProvider(ABC):
 class ClaudeProvider(AIProvider):
     """Claude (Anthropic) provider implementation"""
 
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(self, api_key: str, model: str = "claude-opus-4-6"):
         """
         Initialize Claude provider
 
@@ -43,13 +50,21 @@ class ClaudeProvider(AIProvider):
         self.client = Anthropic(api_key=api_key)
         self.model = model
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
         """
         Generate text using Claude
 
         Args:
             prompt: User prompt
             system_prompt: Optional system prompt
+            temperature: Optional temperature (0.0–1.0)
+            max_tokens: Optional max output tokens (default 4096)
 
         Returns:
             Generated text response
@@ -60,12 +75,14 @@ class ClaudeProvider(AIProvider):
 
         kwargs = {
             "model": self.model,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens or 4096,
             "messages": messages,
         }
 
         if system_prompt:
             kwargs["system"] = system_prompt
+        if temperature is not None:
+            kwargs["temperature"] = temperature
 
         response = self.client.messages.create(**kwargs)
 
@@ -76,7 +93,7 @@ class ClaudeProvider(AIProvider):
 class OpenAIProvider(AIProvider):
     """OpenAI provider implementation"""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-5.2-thinking"):
         """
         Initialize OpenAI provider
 
@@ -87,17 +104,27 @@ class OpenAIProvider(AIProvider):
         self.client = OpenAI(api_key=api_key)
         self.model = model
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
         """
         Generate text using OpenAI
 
         Args:
             prompt: User prompt
             system_prompt: Optional system prompt (not supported by o1 models)
+            temperature: Optional temperature (0.0–1.0)
+            max_tokens: Optional max output tokens (default 4096)
 
         Returns:
             Generated text response
         """
+        _max = max_tokens or 4096
+
         # GPT-5 models support special parameters
         if self.model.startswith('gpt-5'):
             def _build_input(role: str, text: str) -> dict:
@@ -114,7 +141,7 @@ class OpenAIProvider(AIProvider):
             response = self.client.responses.create(
                 model=self.model,
                 input=inputs,
-                max_output_tokens=4096,
+                max_output_tokens=_max,
             )
 
             # Prefer the convenience helper when available
@@ -187,8 +214,8 @@ class OpenAIProvider(AIProvider):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=4096,
-                temperature=0.7,
+                max_tokens=_max,
+                temperature=temperature if temperature is not None else 0.7,
             )
 
         return response.choices[0].message.content

@@ -111,7 +111,7 @@ terraform --version
 
 ## Using the Provisioning Feature
 
-### In the Streamlit App
+### In the Application
 
 #### Step 1: After Repository Creation
 
@@ -291,7 +291,7 @@ All resources are created via Terraform:
 1. Install dbt Cloud GitHub App
 2. Get correct installation ID
 3. Update `GITHUB_APP_INSTALLATION_ID` in `.env`
-4. Restart Streamlit app
+4. Restart the application
 
 ### Issue: "Invalid Snowflake credentials"
 

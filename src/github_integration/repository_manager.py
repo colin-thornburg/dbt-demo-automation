@@ -40,16 +40,19 @@ def sanitize_repo_name(name: str, fallback: str = "dbt-demo-project") -> str:
 
 def default_repo_name(company_name: str) -> str:
     """
-    Generate a default repository name based on the company name.
+    Generate a unique, privacy-safe repository name.
+
+    Uses a company alias (never the real name) and appends a timestamp
+    so every generation is unique.
 
     Args:
         company_name: Name of the prospect company
 
     Returns:
-        Sanitized default repository name
+        Sanitized, unique repository name
     """
-    base_name = f"dbt-demo-{company_name}"
-    return sanitize_repo_name(base_name)
+    from src.naming import make_unique_repo_name
+    return make_unique_repo_name(company_name)
 
 
 class RepositoryManager:
@@ -115,7 +118,11 @@ class RepositoryManager:
         target_dir: Path
     ):
         """
-        Clone template repository to local directory
+        Clone template repository to local directory.
+
+        After cloning, the .git directory and dbt example models
+        (models/example/) are removed so they don't interfere with
+        the generated project.
 
         Args:
             template_url: Template repository URL
@@ -136,6 +143,13 @@ class RepositoryManager:
             git_dir = target_dir / '.git'
             if git_dir.exists():
                 shutil.rmtree(git_dir)
+
+            # Remove dbt example models that ship with `dbt init`.
+            # These contain intentional nulls (my_first_dbt_model) that
+            # fail not_null tests and pollute the DAG.
+            example_dir = target_dir / 'models' / 'example'
+            if example_dir.exists():
+                shutil.rmtree(example_dir)
 
         except subprocess.CalledProcessError as e:
             raise Exception(f"Failed to clone template: {e.stderr}")

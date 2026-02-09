@@ -6,6 +6,7 @@ import {
   FolderOpen, 
   GitBranch, 
   Cloud, 
+  Wrench,
   CheckCircle,
   Menu,
   X,
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Files', href: '/files', icon: FolderOpen },
   { name: 'Repository', href: '/repository', icon: GitBranch },
   { name: 'Provision', href: '/provisioning', icon: Cloud },
+  { name: 'Build & Validate', href: '/build-validate', icon: Wrench },
   { name: 'Success', href: '/success', icon: CheckCircle },
 ]
 

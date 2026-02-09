@@ -1,73 +1,261 @@
 """
 dbt Model Generator
-Creates SQL files for staging, intermediate, and marts models
+Creates SQL files for staging, intermediate, and marts models.
+
+IMPORTANT: Joined models use explicit column lists (not SELECT *)
+to avoid duplicate column names (e.g. both tables having 'id').
+
+JOIN DIRECTION:
+  - Forward FK:  base table has a FK to the join table
+                 e.g. orders.customer_id → customers.id
+                 ON orders.customer_id = customers.id
+  - Reverse FK:  join table has a FK to the base (or any prior table)
+                 e.g. claim_lines.claim_id → claims.id
+                 ON claims.id = claim_lines.claim_id
 """
 
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 from src.ai.scenario_generator import DemoScenario
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_model_columns(model_name: str, scenario: DemoScenario) -> List[str]:
+    """
+    Resolve the output columns for a model by tracing back to source data.
+
+    Works for staging models (via their source table) and makes a best-effort
+    attempt for intermediate models (union of dependency columns).
+    Returns an empty list if columns can't be resolved.
+    """
+    # Staging model → source columns
+    stg = next((s for s in scenario.staging_models if s.name == model_name), None)
+    if stg:
+        source = next(
+            (s for s in scenario.data_sources if s.name == stg.source_table), None
+        )
+        if source:
+            return list(source.columns)
+
+    # Intermediate model → union of dependency columns (minus duplicates)
+    intm = next((m for m in scenario.intermediate_models if m.name == model_name), None)
+    if intm:
+        seen: set = set()
+        cols: List[str] = []
+        for dep in intm.depends_on:
+            for c in _get_model_columns(dep, scenario):
+                if c.lower() not in seen:
+                    seen.add(c.lower())
+                    cols.append(c)
+        return cols
+
+    return []
+
+
+def _entity_name(model_name: str) -> str:
+    """
+    Derive the singular entity name from a model name.
+
+    stg_claim_lines → claim_line
+    int_orders → order
+    stg_raw_claims → raw_claim
+    """
+    base = model_name.replace("stg_", "").replace("int_", "").replace("fct_", "").replace("dim_", "")
+    # Strip trailing 's' only if the word isn't too short (avoid stripping e.g. 'us')
+    if base.endswith("s") and len(base) > 3:
+        base = base[:-1]
+    return base
+
+
+def _find_join_columns(
+    base_dep: str,
+    join_dep: str,
+    scenario: DemoScenario,
+) -> Tuple[str, str]:
+    """
+    Determine the (base_column, join_column) pair for joining two models.
+
+    Returns:
+        (base_col, join_col) so the ON clause is:
+            ON base_alias.base_col = join_alias.join_col
+    """
+    base_cols = [c.lower() for c in _get_model_columns(base_dep, scenario)]
+    join_cols = [c.lower() for c in _get_model_columns(join_dep, scenario)]
+
+    join_entity = _entity_name(join_dep)
+    base_entity = _entity_name(base_dep)
+
+    # ── Strategy 1: base has FK to join entity ──
+    # e.g. orders has customer_id → join customers on orders.customer_id = customers.id
+    fk_in_base = f"{join_entity}_id"
+    if fk_in_base in base_cols:
+        return (fk_in_base, "id")
+
+    # ── Strategy 2: join has FK to base entity ──
+    # e.g. claim_lines has claim_id → join on claims.id = claim_lines.claim_id
+    fk_in_join = f"{base_entity}_id"
+    if fk_in_join in join_cols:
+        return ("id", fk_in_join)
+
+    # ── Strategy 3: shared _id column (same name on both sides) ──
+    base_id_cols = {c for c in base_cols if c.endswith("_id")}
+    join_id_cols = {c for c in join_cols if c.endswith("_id")}
+    shared = base_id_cols & join_id_cols
+    if shared:
+        col = sorted(shared)[0]
+        return (col, col)
+
+    # ── Strategy 4: both have 'id' ──
+    if "id" in base_cols and "id" in join_cols:
+        return ("id", "id")
+
+    return ("id", "id")
+
+
+def _build_join_select(
+    base_alias: str,
+    base_dep: str,
+    join_aliases: List[str],
+    join_deps: List[str],
+    scenario: DemoScenario,
+) -> str:
+    """
+    Build an explicit SELECT clause for a model with joins, avoiding
+    duplicate column names.
+
+    - All columns from the *base* table are included.
+    - For each joined table, only columns that don't already appear are included.
+    """
+    base_columns = _get_model_columns(base_dep, scenario)
+
+    if not base_columns:
+        # Can't resolve columns — safe fallback: only base columns
+        return f"{base_alias}.*"
+
+    selected: set = {c.lower() for c in base_columns}
+    parts: List[str] = [f"{base_alias}.*"]
+
+    for j_alias, j_dep in zip(join_aliases, join_deps):
+        j_columns = _get_model_columns(j_dep, scenario)
+        if not j_columns:
+            continue
+        new_cols = [c for c in j_columns if c.lower() not in selected]
+        for c in new_cols:
+            parts.append(f"{j_alias}.{c}")
+            selected.add(c.lower())
+
+    return ",\n        ".join(parts)
+
+
+def _build_join_clauses(
+    base_alias: str,
+    base_dep: str,
+    join_aliases: List[str],
+    join_deps: List[str],
+    scenario: DemoScenario,
+) -> str:
+    """
+    Build LEFT JOIN clauses with correct FK→PK relationships.
+
+    Supports both directions:
+      - Forward:  available_table.entity_id = join_table.id
+      - Reverse:  available_table.id = join_table.entity_id
+
+    Also supports transitive joins through previously joined tables.
+    """
+    clauses: List[str] = []
+
+    # Track all available tables and their columns for transitive lookups.
+    # Entries: (alias, dep_name, columns_lower)
+    available_tables: List[tuple] = [
+        (base_alias, base_dep, [c.lower() for c in _get_model_columns(base_dep, scenario)])
+    ]
+
+    for j_alias, j_dep in zip(join_aliases, join_deps):
+        j_cols_lower = [c.lower() for c in _get_model_columns(j_dep, scenario)]
+        join_entity = _entity_name(j_dep)
+        matched = False
+
+        # ── Forward FK: does any available table have a FK to this join table? ──
+        # e.g. available 'orders' has 'customer_id' → join customers on orders.customer_id = customers.id
+        fk_col = f"{join_entity}_id"
+        for avail_alias, avail_dep, avail_cols in available_tables:
+            if fk_col in avail_cols:
+                clauses.append(
+                    f"left join {j_alias}\n"
+                    f"        on {avail_alias}.{fk_col} = {j_alias}.id"
+                )
+                matched = True
+                break
+
+        # ── Reverse FK: does the join table have a FK to any available table? ──
+        # e.g. join 'claim_lines' has 'claim_id' → join on claims.id = claim_lines.claim_id
+        if not matched:
+            for avail_alias, avail_dep, avail_cols in available_tables:
+                avail_entity = _entity_name(avail_dep)
+                reverse_fk = f"{avail_entity}_id"
+                if reverse_fk in j_cols_lower:
+                    clauses.append(
+                        f"left join {j_alias}\n"
+                        f"        on {avail_alias}.id = {j_alias}.{reverse_fk}"
+                    )
+                    matched = True
+                    break
+
+        # ── Fallback: use _find_join_columns against the base ──
+        if not matched:
+            base_col, join_col = _find_join_columns(base_dep, j_dep, scenario)
+            clauses.append(
+                f"left join {j_alias}\n"
+                f"        on {base_alias}.{base_col} = {j_alias}.{join_col}"
+            )
+
+        # Add this joined table to the available set for subsequent joins
+        available_tables.append((j_alias, j_dep, j_cols_lower))
+
+    return "\n    ".join(clauses)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def generate_dbt_models(scenario: DemoScenario) -> Dict[str, str]:
     """
-    Generate all dbt model SQL files from the scenario
-
-    Args:
-        scenario: The demo scenario with model definitions
+    Generate all dbt model SQL files from the scenario.
 
     Returns:
         Dictionary mapping filepath to SQL content
     """
     models = {}
 
-    # Generate staging models
     for model in scenario.staging_models:
-        filepath = f"models/staging/{model.name}.sql"
-        sql_content = generate_staging_model_sql(model, scenario)
-        models[filepath] = sql_content
+        models[f"models/staging/{model.name}.sql"] = generate_staging_model_sql(model, scenario)
 
-    # Generate intermediate models
     for model in scenario.intermediate_models:
-        filepath = f"models/intermediate/{model.name}.sql"
-        sql_content = generate_intermediate_model_sql(model, scenario)
-        models[filepath] = sql_content
+        models[f"models/intermediate/{model.name}.sql"] = generate_intermediate_model_sql(model, scenario)
 
-    # Generate marts models
     for model in scenario.marts_models:
-        filepath = f"models/marts/{model.name}.sql"
-        sql_content = generate_mart_model_sql(model, scenario)
-        models[filepath] = sql_content
+        models[f"models/marts/{model.name}.sql"] = generate_mart_model_sql(model, scenario)
 
     return models
 
 
 def generate_staging_model_sql(model, scenario: DemoScenario) -> str:
-    """Generate SQL for a staging model"""
+    """Generate SQL for a staging model."""
 
-    # Find the source definition
     source_table = model.source_table
     source_data = next((s for s in scenario.data_sources if s.name == source_table), None)
 
-    if source_data:
-        columns = source_data.columns
-    else:
-        # Fallback if source not found
-        columns = ['id', 'created_at', 'updated_at']
-
-    # Build column list with basic transformations
-    column_sql_list = []
-    for col in columns:
-        # Apply common staging transformations
-        if col.lower() in ['id', 'created_at', 'updated_at']:
-            column_sql_list.append(f"    {col}")
-        else:
-            column_sql_list.append(f"    {col}")
-
-    columns_sql = ",\n".join(column_sql_list)
-
-    # Determine source reference
+    columns = source_data.columns if source_data else ['id', 'created_at', 'updated_at']
+    columns_sql = ",\n    ".join(f"{col}" for col in columns)
     source_name = source_table.split('.')[-1] if '.' in source_table else source_table
 
-    sql = f"""{{{{
+    return f"""{{{{
     config(
         materialized='view'
     )
@@ -86,7 +274,7 @@ with source as (
 renamed as (
 
     select
-{columns_sql}
+    {columns_sql}
 
     from source
 
@@ -95,35 +283,40 @@ renamed as (
 select * from renamed
 """
 
-    return sql
-
 
 def generate_intermediate_model_sql(model, scenario: DemoScenario) -> str:
-    """Generate SQL for an intermediate model"""
+    """Generate SQL for an intermediate model (join-safe)."""
 
-    # Build CTEs for dependencies
-    cte_list = []
-    for i, dep in enumerate(model.depends_on):
-        cte_name = dep.replace('stg_', '').replace('int_', '')
-        cte_list.append(f"{cte_name} as (\n\n    select * from {{{{ ref('{dep}') }}}}\n\n)")
+    # Build CTEs
+    cte_aliases: List[str] = []
+    cte_parts: List[str] = []
+    for dep in model.depends_on:
+        alias = dep.replace('stg_', '').replace('int_', '')
+        cte_aliases.append(alias)
+        cte_parts.append(f"{alias} as (\n\n    select * from {{{{ ref('{dep}') }}}}\n\n)")
 
-    ctes_sql = ",\n\n".join(cte_list)
+    ctes_sql = ",\n\n".join(cte_parts)
 
-    # Build basic join logic (simplified)
+    # Build final SELECT
     if len(model.depends_on) > 1:
-        base_table = model.depends_on[0].replace('stg_', '').replace('int_', '')
-        join_tables = [dep.replace('stg_', '').replace('int_', '') for dep in model.depends_on[1:]]
+        base_alias = cte_aliases[0]
+        base_dep = model.depends_on[0]
+        join_aliases = cte_aliases[1:]
+        join_deps = model.depends_on[1:]
 
-        join_sql = f"    from {base_table}\n"
-        for join_table in join_tables:
-            join_sql += f"    left join {join_table} on {base_table}.id = {join_table}.id\n"
+        select_cols = _build_join_select(base_alias, base_dep, join_aliases, join_deps, scenario)
+        join_sql = _build_join_clauses(base_alias, base_dep, join_aliases, join_deps, scenario)
 
-        final_select = "    select\n        *\n" + join_sql
+        final_select = (
+            f"    select\n"
+            f"        {select_cols}\n"
+            f"    from {base_alias}\n"
+            f"    {join_sql}"
+        )
     else:
-        table_name = model.depends_on[0].replace('stg_', '').replace('int_', '')
-        final_select = f"    select * from {table_name}"
+        final_select = f"    select * from {cte_aliases[0]}"
 
-    sql = f"""{{{{
+    return f"""{{{{
     config(
         materialized='view'
     )
@@ -144,37 +337,45 @@ final as (
 select * from final
 """
 
-    return sql
-
 
 def generate_mart_model_sql(model, scenario: DemoScenario) -> str:
-    """Generate SQL for a marts model"""
+    """Generate SQL for a marts model (join-safe)."""
 
-    # Determine materialization
-    if model.is_incremental:
-        materialization = "materialized='incremental',\n        unique_key='id'"
-    else:
-        materialization = "materialized='table'"
+    materialization = (
+        "materialized='incremental',\n        unique_key='id'"
+        if model.is_incremental
+        else "materialized='table'"
+    )
 
-    # Build CTEs for dependencies
-    cte_list = []
+    # Build CTEs
+    cte_aliases: List[str] = []
+    cte_parts: List[str] = []
     for dep in model.depends_on:
-        cte_name = dep.replace('stg_', '').replace('int_', '').replace('fct_', '').replace('dim_', '')
-        cte_list.append(f"{cte_name} as (\n\n    select * from {{{{ ref('{dep}') }}}}\n\n)")
+        alias = dep.replace('stg_', '').replace('int_', '').replace('fct_', '').replace('dim_', '')
+        cte_aliases.append(alias)
+        cte_parts.append(f"{alias} as (\n\n    select * from {{{{ ref('{dep}') }}}}\n\n)")
 
-    ctes_sql = ",\n\n".join(cte_list)
+    ctes_sql = ",\n\n".join(cte_parts)
 
-    # Build aggregation logic (simplified)
+    # Build final SELECT
     if len(model.depends_on) > 1:
-        base_table = model.depends_on[0].replace('stg_', '').replace('int_', '')
-        agg_sql = f"""    select
-        *
-    from {base_table}"""
-    else:
-        table_name = model.depends_on[0].replace('stg_', '').replace('int_', '')
-        agg_sql = f"    select * from {table_name}"
+        base_alias = cte_aliases[0]
+        base_dep = model.depends_on[0]
+        join_aliases = cte_aliases[1:]
+        join_deps = model.depends_on[1:]
 
-    # Add incremental logic if needed
+        select_cols = _build_join_select(base_alias, base_dep, join_aliases, join_deps, scenario)
+        join_sql = _build_join_clauses(base_alias, base_dep, join_aliases, join_deps, scenario)
+
+        agg_select = (
+            f"    select\n"
+            f"        {select_cols}\n"
+            f"    from {base_alias}\n"
+            f"    {join_sql}"
+        )
+    else:
+        agg_select = f"    select * from {cte_aliases[0]}"
+
     incremental_logic = ""
     if model.is_incremental:
         incremental_logic = """
@@ -185,7 +386,7 @@ def generate_mart_model_sql(model, scenario: DemoScenario) -> str:
     {% endif %}
 """
 
-    sql = f"""{{{{
+    return f"""{{{{
     config(
         {materialization}
     )
@@ -199,11 +400,9 @@ with {ctes_sql},
 
 final as (
 
-{agg_sql}{incremental_logic}
+{agg_select}{incremental_logic}
 
 )
 
 select * from final
 """
-
-    return sql

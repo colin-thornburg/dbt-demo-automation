@@ -304,15 +304,13 @@ The demo automation tool can automatically:
 
 ### Planned Integration
 
-A future update will add a new page to the Streamlit UI:
-
-**"dbt Cloud Provisioning" Page**
+The application includes a **"dbt Cloud Provisioning"** page that allows you to:
 - Configure Snowflake credentials
 - Review Terraform plan
 - Apply configuration
 - View provisioned project details
 
-### Manual Integration (Current)
+### Manual Integration
 
 After creating a repository:
 

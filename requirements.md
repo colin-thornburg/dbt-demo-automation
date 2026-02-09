@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Build a Streamlit application that enables dbt Labs Sales Engineers to rapidly create customized, industry-specific dbt Cloud demo projects using AI. The tool will generate appropriate data models, seed files with synthetic data, and automatically provision the demo in dbt Cloud via API integration.
+Build an application that enables dbt Labs Sales Engineers to rapidly create customized, industry-specific dbt Cloud demo projects using AI. The tool will generate appropriate data models, seed files with synthetic data, and automatically provision the demo in dbt Cloud via API integration.
 
 ## Target Users
 
@@ -22,15 +22,18 @@ Secondary: Account Executives (for self-service demos)
 
 ### Technology Stack
 
-- **Frontend**: Streamlit (for rapid UI development and SE accessibility)
-- **AI Models**: User-configurable (Claude, GPT-4, Codex, etc.)
+- **Frontend**: React (Vite + Tailwind CSS)
+- **Backend**: FastAPI (Python REST API)
+- **AI Models**: User-configurable (Claude, GPT-4, etc.)
 - **Version Control**: GitHub API for repository management
 - **Platform Integration**: dbt Cloud Admin API (v2 and v3)
-- **Language**: Python 3.9+
+- **Infrastructure**: Terraform for dbt Cloud provisioning
+- **Language**: Python 3.9+, Node.js 18+
 
 ### Key Dependencies
 
-- `streamlit` - UI framework
+- `fastapi` - Backend API framework
+- `uvicorn` - ASGI server
 - `anthropic` - Claude API client
 - `openai` - OpenAI API client
 - `requests` - API interactions
@@ -327,11 +330,11 @@ AI should generate:
 
 **Output Format:**
 - Save as `data_quality_demo_guide.md` in repository
-- Also display in Streamlit app as downloadable artifact
+- Also display in the app as downloadable artifact
 
 ### 7. State Management
 
-Use Streamlit session state to maintain:
+Use server-side session state to maintain:
 - User inputs across pages
 - AI-generated scenario
 - Current build progress
@@ -339,15 +342,15 @@ Use Streamlit session state to maintain:
 - API tokens (encrypted in memory)
 
 **Session State Keys:**
-```python
-st.session_state.company_name
-st.session_state.industry
-st.session_state.discovery_notes
-st.session_state.pain_points
-st.session_state.ai_scenario
-st.session_state.github_repo_url
-st.session_state.dbt_cloud_project_url
-st.session_state.build_status
+```
+company_name
+industry
+discovery_notes
+pain_points
+ai_scenario
+github_repo_url
+dbt_cloud_project_url
+build_status
 ```
 
 ---
@@ -393,13 +396,13 @@ st.session_state.build_status
 
 ## UI/UX Guidelines
 
-### Streamlit Best Practices
-- Use `st.spinner()` for long-running operations
-- `st.success()`, `st.error()`, `st.warning()` for feedback
-- `st.expander()` for collapsible sections
-- `st.tabs()` for organizing different configuration sections
-- `st.progress()` for build progress
-- `st.download_button()` for artifact downloads
+### Best Practices
+- Show loading indicators for long-running operations
+- Use clear success, error, and warning notifications for feedback
+- Collapsible sections for configuration groups
+- Tabs for organizing different configuration sections
+- Progress bars for build progress
+- Download buttons for artifact downloads
 
 ### Layout
 - Wide layout mode for better readability
@@ -456,7 +459,8 @@ While not in initial scope, document these for future iterations:
 ## Deliverables Checklist
 
 ### Code Artifacts
-- [ ] Streamlit application (main app.py)
+- [ ] FastAPI backend (api/main.py)
+- [ ] React frontend (frontend/)
 - [ ] Configuration management module
 - [ ] AI interaction module with multi-provider support
 - [ ] GitHub integration module
@@ -481,7 +485,7 @@ While not in initial scope, document these for future iterations:
 
 ## Environment Variables
 
-Required environment variables (for .env or Streamlit secrets):
+Required environment variables (for .env):
 
 ```
 # Optional: Set defaults, but allow UI override
@@ -499,7 +503,7 @@ DBT_TEMPLATE_REPO_URL=https://github.com/dbt-labs/dbt-demo-template
 ## Development Phases
 
 ### Phase 1 (MVP - Initial Release)
-- Core Streamlit UI with all input forms
+- Core UI with all input forms
 - AI scenario generation with Claude
 - Manual review and confirmation flow
 - GitHub repository creation with generated files
@@ -679,7 +683,7 @@ All requests require `Authorization: Token {service_token}` header.
 
 ## Notes for Claude Code Implementation
 
-1. **Start with Core Structure**: Build the Streamlit app skeleton first with all pages/sections before implementing AI logic
+1. **Start with Core Structure**: Build the app skeleton first with all pages/sections before implementing AI logic
 2. **Mock AI Responses**: Create sample AI responses for testing before integrating real API calls
 3. **Modular Design**: Separate concerns into distinct Python modules (ui, ai, github, dbt_cloud, file_gen)
 4. **Configuration Management**: Use Pydantic models for configuration validation
@@ -687,7 +691,7 @@ All requests require `Authorization: Token {service_token}` header.
 6. **Error Recovery**: Build in checkpoints so partial failures don't lose all progress
 7. **Testing Strategy**: Unit test file generation logic independently before integration
 8. **Prompt Engineering**: Iterate on AI prompts with clear structure and constraints
-9. **User Feedback**: Use Streamlit's status containers for real-time progress updates
+9. **User Feedback**: Use proper status indicators for real-time progress updates
 10. **Documentation**: Comment code thoroughly, especially prompt construction and API interactions
 
 This requirements document provides the complete specification needed to build the dbt Cloud Demo Automation tool. All technical details, constraints, and user flows are defined for implementation.

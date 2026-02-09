@@ -46,6 +46,8 @@ export default function SetupPage() {
   const [dbtWarehouse, setDbtWarehouse] = useState('snowflake')
   const [dbtProjectId, setDbtProjectId] = useState('')
   const [dbtHost, setDbtHost] = useState('cloud.getdbt.com')
+  const [snowflakeUser, setSnowflakeUser] = useState('')
+  const [snowflakePassword, setSnowflakePassword] = useState('')
 
   // Load config from backend and auto-populate form fields
   useEffect(() => {
@@ -57,8 +59,8 @@ export default function SetupPage() {
       
       // Set AI model based on provider
       const defaultModel = config.default_ai_provider === 'claude'
-        ? config.default_claude_model || 'claude-sonnet-4-5-20250929'
-        : config.default_openai_model || 'gpt-4o-mini'
+        ? config.default_claude_model || 'claude-opus-4-6'
+        : config.default_openai_model || 'gpt-5.2-thinking'
       setAiModel(defaultModel)
       
       // Set GitHub defaults
@@ -84,6 +86,9 @@ export default function SetupPage() {
       if (config.default_dbt_cloud_host) {
         setDbtHost(config.default_dbt_cloud_host)
       }
+      if (config.snowflake_user) {
+        setSnowflakeUser(config.snowflake_user)
+      }
     }
   }, [config])
   
@@ -91,8 +96,8 @@ export default function SetupPage() {
   useEffect(() => {
     if (config && aiProvider) {
       const newModel = aiProvider === 'claude'
-        ? config.default_claude_model || 'claude-sonnet-4-5-20250929'
-        : config.default_openai_model || 'gpt-4o-mini'
+        ? config.default_claude_model || 'claude-opus-4-6'
+        : config.default_openai_model || 'gpt-5.2-thinking'
       setAiModel(newModel)
     }
   }, [aiProvider, config])
@@ -131,6 +136,8 @@ export default function SetupPage() {
             warehouse_type: dbtWarehouse,
             project_id: dbtProjectId,
             host: dbtHost,
+            snowflake_user: snowflakeUser,
+            snowflake_password: snowflakePassword,
           })
 
           // Then get missing fields (backend checks .env)
@@ -155,6 +162,8 @@ export default function SetupPage() {
     githubToken,
     dbtAccountId,
     dbtServiceToken,
+    snowflakeUser,
+    snowflakePassword,
   ])
 
   useEffect(() => {
@@ -207,6 +216,8 @@ export default function SetupPage() {
         warehouse_type: dbtWarehouse,
         project_id: dbtProjectId,
         host: dbtHost,
+            snowflake_user: snowflakeUser,
+            snowflake_password: snowflakePassword,
       })
 
       // Generate scenario
@@ -366,9 +377,9 @@ export default function SetupPage() {
               onChange={(e) => {
                 setAiProvider(e.target.value)
                 if (e.target.value === 'claude') {
-                  setAiModel(config?.default_claude_model || 'claude-sonnet-4-5-20250929')
+                  setAiModel(config?.default_claude_model || 'claude-opus-4-6')
                 } else {
-                  setAiModel(config?.default_openai_model || 'gpt-4o-mini')
+                  setAiModel(config?.default_openai_model || 'gpt-5.2-thinking')
                 }
               }}
               className="input-field"
@@ -402,15 +413,15 @@ export default function SetupPage() {
             >
               {aiProvider === 'claude' ? (
                 <>
-                  <option value="claude-haiku-4-5-20251001">claude-haiku-4.5 (Oct 2025) — Lowest latency</option>
-                  <option value="claude-sonnet-4-5-20250929">claude-sonnet-4.5 (Sep 2025) — Balanced (recommended)</option>
-                  <option value="claude-opus-4-1-20250805">claude-opus-4.1 (Aug 2025) — Highest reasoning</option>
+                  <option value="claude-opus-4-6">claude-opus-4-6 — Latest, highest capability (recommended)</option>
+                  <option value="claude-opus-4-5-20251101">claude-opus-4-5 (Nov 2025) — High capability</option>
+                  <option value="claude-sonnet-4-5-20250929">claude-sonnet-4.5 (Sep 2025) — Balanced speed &amp; quality</option>
                 </>
               ) : (
                 <>
-                  <option value="gpt-5">gpt-5 — Deepest reasoning</option>
-                  <option value="gpt-4o">gpt-4o — Balanced quality</option>
-                  <option value="gpt-4o-mini">gpt-4o-mini — Fastest, lowest cost (recommended)</option>
+                  <option value="gpt-5.2-thinking">gpt-5.2-thinking — Deepest reasoning (recommended)</option>
+                  <option value="gpt-5.2-codex">gpt-5.2-codex — Optimized for code generation</option>
+                  <option value="gpt-5.2-instant">gpt-5.2-instant — Fastest, lowest cost</option>
                 </>
               )}
             </select>
@@ -532,6 +543,42 @@ export default function SetupPage() {
               className="input-field"
               placeholder="cloud.getdbt.com"
             />
+          </div>
+
+          <div className="pt-2 border-t border-dbt-gray-200">
+            <div className="text-sm font-semibold text-dbt-gray-900 mb-3">
+              Snowflake Credentials (for dbt Cloud dev env)
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-dbt-gray-700 mb-1">
+                  Snowflake Username
+                </label>
+                <input
+                  type="text"
+                  value={snowflakeUser}
+                  onChange={(e) => setSnowflakeUser(e.target.value)}
+                  className="input-field"
+                  placeholder="user@company.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-dbt-gray-700 mb-1">
+                  Snowflake Password
+                </label>
+                <input
+                  type="password"
+                  value={snowflakePassword}
+                  onChange={(e) => setSnowflakePassword(e.target.value)}
+                  className="input-field"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+            <div className="text-xs text-dbt-gray-500 mt-2">
+              Leave blank to use the defaults from your `.env`.
+            </div>
           </div>
         </div>
       </div>

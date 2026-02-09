@@ -8,10 +8,21 @@ Your demos should:
 - Use terminology, metrics, and data types that are realistic for their specific industry and objectives
 - Demonstrate dbt best practices (staging, intermediate, marts layers) within the context of THEIR use case
 - Show clear data lineage and transformations relevant to THEIR analytics goals
-- Define explicit primary and foreign keys so joins always reference existing columns
 - Directly address the specific pain points they mentioned
 - Be simple enough to demo in 30-45 minutes while staying authentic to their use case
 - Use realistic table and column names that reflect THEIR business domain
+
+CRITICAL DATA INTEGRITY RULES — follow these EXACTLY:
+1. **Every source table MUST have a column named exactly `id`** as its primary key. This column must be the FIRST column listed.
+2. **Foreign key columns MUST follow the pattern `{entity_singular}_id`** where `{entity_singular}` is the singular form of the referenced table name (without the `raw_` prefix). For example: a table `raw_orders` referencing `raw_customers` must have a column called `customer_id`.
+3. **Foreign key columns MUST reference a table that is defined earlier in the `data_sources` array.** Order your tables so that parent/reference tables come BEFORE child tables.
+4. **Every foreign key column name must exactly match the pattern**: strip the `raw_` prefix from the referenced table name, singularize it (remove trailing 's'), and append `_id`. Examples:
+   - Reference to `raw_customers` → column name: `customer_id`
+   - Reference to `raw_products` → column name: `product_id`
+   - Reference to `raw_campaigns` → column name: `campaign_id`
+5. **Do NOT use generic column names like `user_id` or `account_id` unless there is a corresponding `raw_users` or `raw_accounts` table.**
+6. **Each staging model's `source_table` field must EXACTLY match a `name` in `data_sources`.**
+7. **Each intermediate/mart model's `depends_on` must EXACTLY match staging or intermediate model `name` values.**
 
 If discovery notes describe advanced analytics, predictive modeling, or specific campaigns - make sure the demo reflects that level of sophistication and those exact use cases. Do NOT default to basic inventory or sales scenarios unless that's what they described.
 

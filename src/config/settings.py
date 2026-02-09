@@ -29,8 +29,8 @@ class AIConfig(BaseModel):
         provider = info.data.get('provider')
         if provider == 'claude' and not v.startswith('claude'):
             raise ValueError("Claude provider requires a model starting with 'claude'")
-        elif provider == 'openai' and not (v.startswith('gpt') or v.startswith('o1')):
-            raise ValueError("OpenAI provider requires a GPT or O1 model")
+        elif provider == 'openai' and not (v.startswith('gpt') or v.startswith('o1') or v.startswith('o3') or v.startswith('o4')):
+            raise ValueError("OpenAI provider requires a GPT or O-series model")
         return v
 
 
@@ -157,11 +157,11 @@ class AppConfig(BaseSettings):
         alias="OPENAI_API_KEY"
     )
     default_claude_model: str = Field(
-        default="claude-sonnet-4-5-20250929",
+        default="claude-opus-4-6",
         alias="DEFAULT_CLAUDE_MODEL"
     )
     default_openai_model: str = Field(
-        default="gpt-4o-mini",
+        default="gpt-5.2-thinking",
         alias="DEFAULT_OPENAI_MODEL"
     )
 

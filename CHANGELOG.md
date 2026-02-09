@@ -11,7 +11,7 @@
   - GitHub App integration for repository access
   - Production and development environment setup
   
-- **dbt Cloud Provisioning UI**: New Streamlit page for visual Terraform workflow
+- **dbt Cloud Provisioning UI**: Visual Terraform workflow page
   - Live progress tracking with status updates
   - Snowflake configuration form with .env defaults
   - Real-time Terraform output display

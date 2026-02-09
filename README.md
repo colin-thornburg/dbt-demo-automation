@@ -1,6 +1,6 @@
 # dbt Cloud Demo Automation Tool
 
-An AI-powered Streamlit application that enables Solution Architects to rapidly create customized, industry-specific dbt PLatform demo projects.
+An AI-powered application that enables Solution Architects to rapidly create customized, industry-specific dbt Platform demo projects.
 
 ## Overview
 
@@ -15,6 +15,7 @@ This tool reduces demo preparation time from hours to minutes by:
 ### Prerequisites
 
 - Python 3.9 or higher
+- Node.js 18+ (for the React frontend)
 - GitHub account with Personal Access Token
 - dbt Cloud account with Service Token
 - API key for Claude (Anthropic) or OpenAI
@@ -35,23 +36,36 @@ This tool reduces demo preparation time from hours to minutes by:
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install dependencies**
+3. **Install Python dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure environment variables**
+4. **Install frontend dependencies**
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
+
+5. **Configure environment variables**
    ```bash
    cp .env.example .env
    # Edit .env with your API keys and configuration
    ```
 
-5. **Run the application**
+6. **Run the application**
    ```bash
-   streamlit run app.py
+   # Terminal 1: Start the FastAPI backend
+   ./start_api.sh
+   # Or: uvicorn api.main:app --reload --port 8000
+
+   # Terminal 2: Start the React frontend
+   cd frontend
+   npm run dev
    ```
 
-The app will open in your browser at `http://localhost:8501`
+The app will open in your browser at `http://localhost:5173` (frontend) with the API at `http://localhost:8000`.
 
 ## Configuration
 
@@ -150,25 +164,32 @@ This makes it easy to enforce internal storytelling standards, naming convention
 
 ```
 demo_automation/
-├── app.py                      # Main Streamlit application
+├── api/
+│   └── main.py                 # FastAPI backend
+├── frontend/                   # React frontend (Vite + Tailwind)
+│   ├── src/
+│   │   ├── components/         # Reusable UI components
+│   │   ├── pages/              # Page components
+│   │   ├── contexts/           # React context providers
+│   │   └── api/                # API client
+│   └── package.json
 ├── src/
 │   ├── config/                 # Configuration management
 │   ├── ai/                     # AI provider integration
 │   ├── github_integration/     # GitHub API wrapper
-│   ├── dbt_cloud/             # dbt Cloud API integration
-│   ├── file_generation/       # dbt file generators
-│   ├── terraform_integration/ # Terraform automation (NEW)
-│   └── ui/                    # Streamlit UI components
-├── terraform/                  # Terraform configurations (NEW)
-│   ├── providers.tf           # Provider configuration
-│   ├── variables.tf           # Input variables
-│   ├── main.tf               # Resource definitions
-│   └── outputs.tf            # Output values
+│   ├── dbt_cloud/              # dbt Cloud API integration
+│   ├── file_generation/        # dbt file generators
+│   └── terraform_integration/  # Terraform automation
+├── terraform/                  # Terraform configurations
+│   ├── providers.tf            # Provider configuration
+│   ├── variables.tf            # Input variables
+│   ├── main.tf                 # Resource definitions
+│   └── outputs.tf              # Output values
 ├── templates/                  # Prompt templates
-├── docs/                      # Documentation
-├── tests/                     # Unit and integration tests
-├── requirements.txt           # Python dependencies
-└── .env.example              # Environment variable template
+├── docs/                       # Documentation
+├── requirements.txt            # Python dependencies
+├── start_api.sh                # API startup script
+└── .env.example                # Environment variable template
 ```
 
 ## Features
@@ -181,7 +202,7 @@ demo_automation/
 
 ### Automated Provisioning
 - GitHub repository creation
-- **Terraform-based dbt Cloud provisioning** (NEW)
+- **Terraform-based dbt Cloud provisioning**
   - Automated project creation
   - Snowflake connection setup
   - Development & Production environments
@@ -195,6 +216,18 @@ demo_automation/
 - Documentation and lineage ready to show
 
 ## Development
+
+### Running the Application
+
+```bash
+# Start the FastAPI backend (port 8000)
+source venv/bin/activate
+uvicorn api.main:app --reload --port 8000
+
+# Start the React frontend (port 5173)
+cd frontend
+npm run dev
+```
 
 ### Running Tests
 ```bash
@@ -220,7 +253,7 @@ flake8 src/
 - [User Guide](docs/USER_GUIDE.md) - Step-by-step usage instructions
 - [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) - Work with the generated project and dbt Cloud CLI
 
-### Terraform Provisioning (NEW)
+### Terraform Provisioning
 - **[Terraform Quickstart](docs/TERRAFORM_QUICKSTART.md)** - Get started in 5 minutes
 - **[Terraform Setup Guide](docs/TERRAFORM_SETUP.md)** - Complete provisioning documentation
 - [Terraform README](terraform/README.md) - Configuration reference
@@ -233,7 +266,8 @@ flake8 src/
 ## Architecture
 
 Built with:
-- **Streamlit** - Interactive web interface
+- **React** - Modern frontend UI (Vite + Tailwind CSS)
+- **FastAPI** - High-performance Python backend
 - **Pydantic** - Configuration validation
 - **Anthropic/OpenAI** - AI model providers
 - **PyGithub** - GitHub API integration

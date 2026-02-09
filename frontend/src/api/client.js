@@ -96,5 +96,23 @@ export const getProvisioningProgress = async (sessionId) => {
   return response.data
 }
 
+// Build Validation (dbt Cloud CLI + AI Auto-Fix)
+export const getBuildCliStatus = async (sessionId) => {
+  const response = await api.get(`/api/sessions/${sessionId}/build-cli-status`)
+  return response.data
+}
+
+export const startBuildValidation = async (sessionId) => {
+  const response = await api.post(`/api/sessions/${sessionId}/validate-build`, null, {
+    timeout: 600000, // 10 min — builds can be slow
+  })
+  return response.data
+}
+
+export const getBuildValidation = async (sessionId) => {
+  const response = await api.get(`/api/sessions/${sessionId}/build-validation`)
+  return response.data
+}
+
 export default api
 

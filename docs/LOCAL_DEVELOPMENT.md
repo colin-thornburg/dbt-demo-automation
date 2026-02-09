@@ -10,14 +10,24 @@ This guide explains how to work with generated demo projects on your own machine
 
 ## Generate a Project
 
-1. Launch the Streamlit app (`streamlit run app.py`).
-2. Configure the **dbt Cloud** section in the sidebar:
+1. Start the application:
+   ```bash
+   # Terminal 1: Start the API
+   source venv/bin/activate
+   uvicorn api.main:app --reload --port 8000
+   
+   # Terminal 2: Start the frontend
+   cd frontend
+   npm run dev
+   ```
+2. Open the app at http://localhost:5173
+3. Configure the **dbt Cloud** section:
    - Account ID
    - Project ID
    - Host (for example, `cloud.getdbt.com`)
    - Optional CLI token name/value and defer environment ID
-3. Confirm the AI-generated scenario and proceed to the **Files Preview** page.
-4. Download the project zip and the `dbt_cloud.yml` snippet.
+4. Confirm the AI-generated scenario and proceed to the **Files Preview** page.
+5. Download the project zip and the `dbt_cloud.yml` snippet.
 
 ## Configure the CLI
 
@@ -44,4 +54,3 @@ dbt test
 ## Custom Prompt Guidance
 
 To enforce additional modelling standards, add `.txt` files to `templates/prompts/`. The tool automatically folds their content into the AI instructions.
-

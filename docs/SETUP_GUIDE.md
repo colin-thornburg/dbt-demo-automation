@@ -25,6 +25,7 @@ Complete installation and configuration instructions.
 ### System Requirements
 
 - **Python**: 3.9 or higher
+- **Node.js**: 18 or higher (for React frontend)
 - **Git**: For repository operations
 - **Internet Connection**: For API access
 
@@ -55,7 +56,7 @@ venv\Scripts\activate
 
 You should see `(venv)` in your terminal prompt.
 
-### 3. Install Dependencies
+### 3. Install Python Dependencies
 
 ```bash
 pip install --upgrade pip
@@ -63,13 +64,21 @@ pip install -r requirements.txt
 ```
 
 This will install:
-- Streamlit (UI framework)
-- Anthropic and OpenAI clients
+- FastAPI (backend framework)
+- Anthropic and OpenAI clients for AI
 - PyGithub (GitHub API)
 - Pydantic (validation)
 - Other supporting libraries
 
-### 4. Configure Environment Variables
+### 4. Install Frontend Dependencies
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+### 5. Configure Environment Variables
 
 ```bash
 cp .env.example .env
@@ -151,18 +160,35 @@ DBT_TEMPLATE_REPO_URL=https://github.com/colin-thornburg/demo-automation-templat
 
 ## Running the Application
 
-### Start Streamlit
+### Start the Backend (FastAPI)
 
 ```bash
-streamlit run app.py
+# Activate virtual environment first
+source venv/bin/activate  # macOS/Linux
+# or: venv\Scripts\activate  # Windows
+
+# Start the API server
+./start_api.sh
+# Or: uvicorn api.main:app --reload --port 8000
 ```
 
-The application will automatically open in your browser at:
-```
-http://localhost:8501
+The API will be available at:
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
+### Start the Frontend (React)
+
+In a new terminal:
+
+```bash
+cd frontend
+npm run dev
 ```
 
-If it doesn't open automatically, click the URL in your terminal.
+The application will open in your browser at:
+```
+http://localhost:5173
+```
 
 ### First Run
 
@@ -252,7 +278,7 @@ print(f'✓ GitHub connected as: {user.login}')
 
 To enable the optional Local Development workflow:
 
-1. Open the **⚙️ Configuration** sidebar in the Streamlit app and provide:
+1. Open the **Configuration** section in the app and provide:
    - dbt Cloud Account ID
    - dbt Cloud Project ID
    - Host (for example, `cloud.getdbt.com` or your regional host)
@@ -293,14 +319,28 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-### Streamlit Won't Start
+### Backend Won't Start
 
 ```bash
-# Check if Streamlit is installed
-pip show streamlit
+# Check if FastAPI is installed
+pip show fastapi uvicorn
 
 # Try running with explicit python
-python -m streamlit run app.py
+python -m uvicorn api.main:app --reload --port 8000
+```
+
+### Frontend Won't Start
+
+```bash
+# Check if node_modules exists
+cd frontend
+ls node_modules
+
+# If not, install dependencies
+npm install
+
+# Start the dev server
+npm run dev
 ```
 
 ### API Connection Errors
@@ -340,4 +380,4 @@ If you encounter issues:
 
 ---
 
-**Last Updated**: [Date]
+**Last Updated**: January 2025

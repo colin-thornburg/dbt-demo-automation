@@ -3,10 +3,9 @@ FastAPI Backend for dbt Cloud Demo Automation
 Provides REST API endpoints for the React frontend
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ from src.file_generation import generate_all_files, generate_mesh_projects
 from src.github_integration import create_demo_repository, create_mesh_repositories, default_repo_name
 from src.terraform_integration import generate_terraform_config, write_terraform_files
 from src.terraform_integration.terraform_executor import TerraformExecutor
+from src.dbt_cli import DbtCliExecutor, DbtErrorParser, BuildValidator
 
 app = FastAPI(title="dbt Cloud Demo Automation API", version="1.0.0")
 
@@ -70,6 +70,8 @@ class DbtCloudConfigRequest(BaseModel):
     pat_name: Optional[str] = None
     pat_value: Optional[str] = None
     defer_env_id: Optional[str] = None
+    snowflake_user: Optional[str] = None
+    snowflake_password: Optional[str] = None
 
 
 class RegenerateRequest(BaseModel):
@@ -121,6 +123,7 @@ async def create_session():
             "dbt_cloud_pat_name": config.dbt_cloud_pat_name,
             "dbt_cloud_pat_value": config.dbt_cloud_pat_value,
             "dbt_cloud_defer_env_id": config.dbt_cloud_defer_env_id,
+            "snowflake_user": config.snowflake_user,
         }
     }
     
@@ -650,6 +653,12 @@ async def provision_dbt_cloud(session_id: str):
         
         from src.terraform_integration.terraform_generator import TerraformConfig, generate_tfvars_content
         
+        # Get Snowflake credentials - prefer session config, fall back to .env
+        snowflake_user = (dbt_config or {}).get("snowflake_user") or config.snowflake_user
+        snowflake_password = (dbt_config or {}).get("snowflake_password") or config.snowflake_password
+        if hasattr(snowflake_password, "get_secret_value"):
+            snowflake_password = snowflake_password.get_secret_value()
+        
         # Check for required Terraform configuration
         missing_vars = []
         if not config.github_app_installation_id:
@@ -662,9 +671,9 @@ async def provision_dbt_cloud(session_id: str):
             missing_vars.append("SNOWFLAKE_WAREHOUSE")
         if not config.snowflake_role:
             missing_vars.append("SNOWFLAKE_ROLE")
-        if not config.snowflake_user:
+        if not snowflake_user:
             missing_vars.append("SNOWFLAKE_USER")
-        if not config.snowflake_password:
+        if not snowflake_password:
             missing_vars.append("SNOWFLAKE_PASSWORD")
         
         if missing_vars:
@@ -732,8 +741,8 @@ async def provision_dbt_cloud(session_id: str):
             snowflake_database=config.snowflake_database,
             snowflake_warehouse=config.snowflake_warehouse,
             snowflake_role=config.snowflake_role,
-            snowflake_user=config.snowflake_user,
-            snowflake_password=config.snowflake_password,
+            snowflake_user=snowflake_user,
+            snowflake_password=snowflake_password,
             snowflake_schema=config.snowflake_schema or "analytics",
             enable_semantic_layer=scenario_data.get("include_semantic_layer", False)
         )
@@ -1190,4 +1199,240 @@ async def refresh_repository_connection(session_id: str):
         import traceback
         error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
         raise HTTPException(status_code=500, detail=error_detail)
+
+
+# ======================================================================
+# Build Validation (dbt Cloud CLI + AI Auto-Fix)
+# ======================================================================
+
+
+@app.get("/api/sessions/{session_id}/build-cli-status")
+async def get_build_cli_status(session_id: str):
+    """Check whether the dbt Cloud CLI is available locally."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    executor = DbtCliExecutor(project_dir=Path("/tmp"))
+    info = {
+        "cli_available": executor.is_available,
+        "cli_path": executor.dbt_path,
+    }
+    if executor.is_available:
+        info["cli_info"] = executor.get_version_info()
+    return info
+
+
+@app.post("/api/sessions/{session_id}/validate-build")
+async def start_build_validation(session_id: str):
+    """
+    Start the dbt build-validate-fix loop.
+
+    Runs dbt build via the Cloud CLI, parses errors, uses AI + dbt
+    agent skills to auto-fix, and retries up to 3 times.
+
+    Requires:
+    - dbt Cloud CLI installed locally
+    - Repository already created and pushed
+    - dbt Cloud project already provisioned
+    """
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = sessions[session_id]
+    provisioning_result = session.get("provisioning_result")
+    repository_info = session.get("repository_info")
+    scenario_data = session.get("scenario")
+    ai_config = session.get("ai_config")
+    dbt_config = session.get("dbt_config")
+    config = load_config()
+
+    if not provisioning_result:
+        raise HTTPException(status_code=400, detail="Project not provisioned yet")
+    if not repository_info:
+        raise HTTPException(status_code=400, detail="Repository not created yet")
+    if not scenario_data:
+        raise HTTPException(status_code=400, detail="Scenario not found")
+
+    # Get AI provider for auto-fixing
+    provider = ai_config.get("provider") if ai_config else config.default_ai_provider
+    api_key = ai_config.get("api_key") if ai_config else None
+    if not api_key:
+        api_key = (
+            config.anthropic_api_key if provider == "claude" else config.openai_api_key
+        )
+    if not api_key:
+        raise HTTPException(status_code=400, detail="AI API key required for auto-fix")
+
+    model = ai_config.get("model") if ai_config else (
+        config.default_claude_model if provider == "claude" else config.default_openai_model
+    )
+    ai_provider = get_ai_provider(provider_type=provider, api_key=api_key, model=model)
+
+    # Get dbt Cloud CLI config
+    project_id = str(provisioning_result.get("project_id", ""))
+    dbt_token = dbt_config.get("service_token") if dbt_config else ""
+    if not dbt_token or not dbt_token.strip():
+        dbt_token = config.dbt_cloud_service_token
+        if hasattr(dbt_token, "get_secret_value"):
+            dbt_token = dbt_token.get_secret_value()
+    dbt_host = dbt_config.get("host", "cloud.getdbt.com") if dbt_config else "cloud.getdbt.com"
+    if not dbt_host or dbt_host.strip() == "":
+        dbt_host = config.default_dbt_cloud_host or "cloud.getdbt.com"
+
+    # GitHub credentials for pushing fixes — fall back to .env if session is empty
+    github_config = session.get("github_config")
+    github_token = github_config.get("token") if github_config else None
+    if not github_token or not github_token.strip():
+        github_token = config.github_token
+    repo_url = repository_info.get("url", "")
+
+    import logging as _log
+    _log.info(
+        "Build validation: github_token=%s, repo_url=%s",
+        "set" if github_token else "MISSING",
+        repo_url or "MISSING",
+    )
+
+    # Clone the repo to a temp directory
+    import tempfile
+    import subprocess
+
+    work_dir = Path(tempfile.mkdtemp(prefix="dbt_validate_"))
+    repo_clone_url = repo_url
+    if github_token and "github.com" in repo_url:
+        repo_clone_url = repo_url.replace("https://", f"https://{github_token}@")
+
+    # Initialise build progress tracking
+    sessions[session_id]["build_validation"] = {
+        "status": "in_progress",
+        "current_step": "Cloning repository",
+        "steps": [],
+        "result": None,
+    }
+
+    def update_progress(step: str, status: str):
+        bv = sessions[session_id].get("build_validation", {})
+        bv["current_step"] = step
+        if status == "completed":
+            bv["steps"].append({"name": step, "status": "completed"})
+        elif status == "error":
+            bv["steps"].append({"name": step, "status": "error"})
+        sessions[session_id]["build_validation"] = bv
+
+    try:
+        # Clone
+        update_progress("Cloning repository", "in_progress")
+        subprocess.run(
+            ["git", "clone", repo_clone_url, str(work_dir / "project")],
+            check=True, capture_output=True, text=True,
+        )
+        project_dir = work_dir / "project"
+
+        # Remove dbt example models if present
+        example_dir = project_dir / "models" / "example"
+        if example_dir.exists():
+            import shutil
+            shutil.rmtree(example_dir)
+
+        update_progress("Cloning repository", "completed")
+
+        # Create validator
+        validator = BuildValidator(
+            ai_provider=ai_provider,
+            project_dir=project_dir,
+            dbt_cloud_project_id=project_id,
+            dbt_cloud_token=dbt_token,
+            dbt_cloud_host=dbt_host,
+            max_attempts=3,
+            on_progress=update_progress,
+        )
+
+        if not validator.cli_available:
+            sessions[session_id]["build_validation"]["status"] = "cli_not_found"
+            sessions[session_id]["build_validation"]["current_step"] = "dbt CLI not found"
+            return {
+                "status": "cli_not_found",
+                "message": (
+                    "dbt Cloud CLI not found on this machine. "
+                    "Install via: brew tap dbt-labs/dbt-cli && brew install dbt"
+                ),
+                "install_url": "https://docs.getdbt.com/docs/cloud/cloud-cli-installation",
+            }
+
+        # Run the build-fix loop
+        build_result = validator.validate(
+            github_token=github_token,
+            github_repo_url=repo_url,
+        )
+
+        # Store result with full transparency: logs, project path, CLI info
+        result_data = {
+            "success": build_result.success,
+            "total_attempts": build_result.total_attempts,
+            "message": build_result.message,
+            "elapsed_seconds": build_result.elapsed_seconds,
+            "files_modified": build_result.files_modified,
+            "project_dir": build_result.project_dir,
+            "cli_info": build_result.cli_info,
+            "pushed_to_github": build_result.pushed_to_github,
+            "final_errors": [
+                {
+                    "category": e.category.value if hasattr(e.category, 'value') else str(e.category),
+                    "model_name": e.model_name,
+                    "file_path": e.file_path,
+                    "message": e.message[:500],
+                }
+                for e in build_result.final_errors
+            ],
+            "attempts": [
+                {
+                    "attempt_number": a.attempt_number,
+                    "status": a.status,
+                    "error_count": len(a.errors),
+                    "fixes_count": len(a.fixes_applied),
+                    "logs": a.logs,
+                    "errors": [
+                        {
+                            "category": e.category.value if hasattr(e.category, 'value') else str(e.category),
+                            "model_name": e.model_name,
+                            "message": e.message[:300],
+                        }
+                        for e in a.errors
+                    ],
+                    "fixes": [
+                        {"file": f.file_path, "explanation": f.explanation}
+                        for f in a.fixes_applied
+                    ],
+                }
+                for a in build_result.attempts
+            ],
+        }
+
+        sessions[session_id]["build_validation"]["status"] = (
+            "completed" if build_result.success else "failed"
+        )
+        sessions[session_id]["build_validation"]["result"] = result_data
+        sessions[session_id]["build_validation"]["current_step"] = (
+            "Build validation complete" if build_result.success else build_result.message
+        )
+
+        return result_data
+
+    except Exception as e:
+        import traceback
+        sessions[session_id]["build_validation"]["status"] = "error"
+        sessions[session_id]["build_validation"]["current_step"] = f"Error: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"{e}\n\n{traceback.format_exc()}")
+
+
+@app.get("/api/sessions/{session_id}/build-validation")
+async def get_build_validation(session_id: str):
+    """Get current build validation progress / result."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    bv = sessions[session_id].get("build_validation")
+    if not bv:
+        return {"status": "idle", "current_step": None, "steps": [], "result": None}
+    return bv
 

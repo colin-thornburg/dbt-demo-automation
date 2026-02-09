@@ -1,8 +1,15 @@
 """
 File Generation Orchestrator
-Coordinates the generation of all dbt project files
+Coordinates the generation of all dbt project files.
+
+Before generating any files, column names in the scenario's data sources
+are sanitised to be Snowflake-safe (lowercase, underscores only, no
+special characters).  This ensures consistency across seeds, models, and
+schema YAML.
 """
 
+import copy
+import re
 from typing import Dict, Optional, List
 from src.ai.scenario_generator import DemoScenario
 from .seed_generator import generate_seed_csvs
@@ -11,6 +18,43 @@ from .schema_generator import generate_schema_yml
 from .project_generator import generate_dbt_project_yml
 from .semantic_layer_generator import generate_semantic_models, generate_metrics_yml
 from .mesh_generator import generate_producer_project, generate_consumer_project
+
+
+# ---------------------------------------------------------------------------
+# Column-name sanitisation (applied to the whole scenario once)
+# ---------------------------------------------------------------------------
+
+def _sanitize_col(name: str) -> str:
+    """Clean one column name for Snowflake safety."""
+    name = name.strip().lower()
+    name = re.sub(r"[^a-z0-9_]", "_", name)
+    name = re.sub(r"_+", "_", name)
+    name = name.strip("_") or "col"
+    # Snowflake identifiers must start with a letter or underscore when unquoted.
+    if not re.match(r"^[a-z_]", name):
+        name = f"col_{name}"
+    return name
+
+
+def _sanitize_scenario(scenario: DemoScenario) -> DemoScenario:
+    """
+    Return a *deep copy* of the scenario with every DataSource column name
+    sanitised.  The original is not modified.
+    """
+    scenario = scenario.model_copy(deep=True)
+    for ds in scenario.data_sources:
+        seen: Dict[str, int] = {}
+        clean: List[str] = []
+        for raw in ds.columns:
+            c = _sanitize_col(raw)
+            if c in seen:
+                seen[c] += 1
+                c = f"{c}_{seen[c]}"
+            else:
+                seen[c] = 0
+            clean.append(c)
+        ds.columns = clean
+    return scenario
 
 
 class GeneratedFiles:
@@ -97,6 +141,9 @@ def generate_all_files(
     Returns:
         GeneratedFiles object containing all generated content
     """
+    # Sanitise column names across the whole scenario first
+    scenario = _sanitize_scenario(scenario)
+
     generated = GeneratedFiles()
 
     # Generate seed CSV files

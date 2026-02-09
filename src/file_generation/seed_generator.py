@@ -1,15 +1,81 @@
 """
 Seed CSV Generator
-Creates realistic seed data with foreign key integrity
+Creates realistic seed data with foreign key integrity.
+
+Column names are sanitised to be Snowflake-safe (lowercase, underscores only).
+
+CSV files are written as PLAIN TEXT without the Python csv module to
+eliminate any quoting / encoding quirks that can confuse dbt's agate
+type-inference on Snowflake.  Every value is guaranteed to be free of
+commas, quotes, newlines, and other special characters.
 """
 
-import csv
+import re
 import random
 from typing import Dict, List, Any
-from io import StringIO
 from datetime import datetime, timedelta
 
 from src.ai.scenario_generator import DemoScenario, DataSource
+from src.naming import identify_primary_key, identify_foreign_keys
+
+
+# ---------------------------------------------------------------------------
+# Column-name sanitisation
+# ---------------------------------------------------------------------------
+
+def _sanitize_column_name(name: str) -> str:
+    """
+    Clean a column name so it is safe for Snowflake and dbt seeds.
+
+    - Strip whitespace
+    - Lowercase
+    - Replace spaces / special chars with underscores
+    - Collapse consecutive underscores
+    - Remove leading/trailing underscores
+    - Ensure it starts with a letter or underscore
+    """
+    name = name.strip().lower()
+    name = re.sub(r"[^a-z0-9_]", "_", name)
+    name = re.sub(r"_+", "_", name)
+    name = name.strip("_") or "col"
+    if not re.match(r"^[a-z_]", name):
+        name = f"col_{name}"
+    return name
+
+
+def _sanitize_columns(columns: List[str]) -> List[str]:
+    """Sanitise a list of column names, deduplicating if needed."""
+    seen: Dict[str, int] = {}
+    result: List[str] = []
+    for raw in columns:
+        clean = _sanitize_column_name(raw)
+        if clean in seen:
+            seen[clean] += 1
+            clean = f"{clean}_{seen[clean]}"
+        else:
+            seen[clean] = 0
+        result.append(clean)
+    return result
+
+
+def _safe_value(val: Any) -> str:
+    """
+    Convert *val* to a string that is safe for un-quoted CSV.
+
+    Strips commas, double-quotes, single-quotes, newlines, carriage-
+    returns, and any other characters that could break CSV parsing or
+    Snowflake seed loading.
+    """
+    s = str(val)
+    # Remove characters that would require CSV quoting
+    for ch in (',', '"', "'", '\n', '\r', '\t'):
+        s = s.replace(ch, '')
+    return s
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def generate_seed_csvs(scenario: DemoScenario, num_rows: int = 20) -> Dict[str, str]:
@@ -49,7 +115,10 @@ def generate_single_seed_csv(
     scenario: DemoScenario
 ) -> str:
     """
-    Generate a single seed CSV file with realistic data
+    Generate a single seed CSV file with realistic data and correct FK integrity.
+
+    The CSV is built as a plain string (no Python csv module) so there is
+    zero chance of hidden quoting or encoding artefacts.
 
     Args:
         source: Data source definition
@@ -60,37 +129,54 @@ def generate_single_seed_csv(
     Returns:
         CSV content as string
     """
-    output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=source.columns)
-    writer.writeheader()
+    # Sanitise column names so they're safe for Snowflake
+    clean_columns = _sanitize_columns(source.columns)
 
-    # Track IDs from this table
-    table_ids = []
+    # Identify primary key and foreign keys using the CLEAN column names
+    all_table_names = [s.name for s in scenario.data_sources]
+    pk_column = identify_primary_key(clean_columns, source.name)
+    fk_map = identify_foreign_keys(clean_columns, pk_column, all_table_names)
+
+    # Track primary key values for this table
+    pk_values = []
+
+    # ── Build rows as lists of safe strings ──────────────────────────
+    lines: List[str] = []
+
+    # Header line (plain column names, comma-separated, no quoting)
+    lines.append(",".join(clean_columns))
 
     for i in range(num_rows):
-        row = {}
-        for column in source.columns:
-            row[column] = generate_column_value(
-                column_name=column,
-                table_name=source.name,
-                row_index=i,
-                generated_ids=generated_ids,
-                scenario=scenario
-            )
+        row_values: List[str] = []
+        for column in clean_columns:
+            if column == pk_column:
+                pk_val = i + 1
+                pk_values.append(pk_val)
+                row_values.append(str(pk_val))
+            elif column in fk_map:
+                ref_table = fk_map[column]
+                ref_table_base = ref_table.split('.')[-1]
+                if ref_table_base in generated_ids and generated_ids[ref_table_base]:
+                    row_values.append(str(random.choice(generated_ids[ref_table_base])))
+                else:
+                    row_values.append(str(random.randint(1, min(num_rows, 20))))
+            else:
+                val = generate_column_value(
+                    column_name=column,
+                    table_name=source.name,
+                    row_index=i,
+                    generated_ids=generated_ids,
+                    scenario=scenario
+                )
+                row_values.append(_safe_value(val))
 
-        # Track ID column values
-        if 'id' in column.lower() and not any(fk in column.lower() for fk in ['_id', 'fk_']):
-            table_ids.append(row[column])
+        lines.append(",".join(row_values))
 
-        writer.writerow(row)
+    # Store this table's PK values so downstream tables can reference them
+    table_key = source.name.split('.')[-1]
+    generated_ids[table_key] = pk_values
 
-    # Store generated IDs for this table
-    if table_ids:
-        table_key = source.name.split('.')[-1]
-        generated_ids[table_key] = table_ids
-
-    # Remove trailing newline so dbt seed tests don't treat it as an empty row
-    return output.getvalue().rstrip('\r\n')
+    return "\n".join(lines)
 
 
 def generate_column_value(
@@ -101,7 +187,11 @@ def generate_column_value(
     scenario: DemoScenario
 ) -> Any:
     """
-    Generate a realistic value for a column based on its name and context
+    Generate a realistic value for a column based on its name and context.
+
+    IMPORTANT: Every returned value MUST be free of commas, double-quotes,
+    single-quotes, and newlines so it can be safely placed into an un-quoted
+    CSV cell.
 
     Args:
         column_name: Name of the column
@@ -115,37 +205,49 @@ def generate_column_value(
     """
     col_lower = column_name.lower()
 
-    # Primary ID columns
-    if col_lower == 'id' or col_lower.endswith('_id') and not any(
-        ref in col_lower for ref in ['user', 'customer', 'product', 'order', 'account']
-    ):
-        return row_index + 1
-
-    # Foreign key columns (look for referenced table IDs)
-    if '_id' in col_lower or col_lower.startswith('fk_'):
-        # Try to find matching table
+    # Generic _id columns that weren't caught as FK above — treat as FK fallback
+    if col_lower.endswith('_id'):
+        # Try to find a matching table in generated_ids
+        entity = col_lower[:-3]  # remove '_id'
         for table_key, ids in generated_ids.items():
-            if table_key.lower() in col_lower.lower():
+            table_base = table_key.lower()
+            for prefix in ('raw_', 'src_', 'source_', 'stg_'):
+                if table_base.startswith(prefix):
+                    table_base = table_base[len(prefix):]
+            singular = table_base.rstrip('s') if table_base.endswith('s') and len(table_base) > 2 else table_base
+            if entity == table_base or entity == singular:
                 return random.choice(ids) if ids else 1
-        # Fallback: random ID between 1-50
-        return random.randint(1, 50)
+        # No match found — return ID in safe range
+        return random.randint(1, min(20, max(1, row_index + 1)))
 
-    # Email addresses
+    # Email addresses — only alphanumeric in the domain part (no dots or @-related issues)
     if 'email' in col_lower:
-        return f"user{row_index}@{scenario.company_name.lower().replace(' ', '')}.com"
+        safe_domain = re.sub(r"[^a-z0-9]", "", scenario.company_name.lower())
+        return f"user{row_index}@{safe_domain}.com"
 
     # Names (first, last, full)
     if 'first_name' in col_lower or col_lower == 'firstname':
-        return random.choice(['John', 'Jane', 'Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'])
+        return random.choice(['John', 'Jane', 'Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank',
+                              'Grace', 'Henry', 'Iris', 'James', 'Karen', 'Leo', 'Maria', 'Nathan',
+                              'Olivia', 'Peter', 'Quinn', 'Rosa'])
     if 'last_name' in col_lower or col_lower == 'lastname':
-        return random.choice(['Smith', 'Johnson', 'Williams', 'Jones', 'Brown', 'Davis', 'Miller', 'Wilson'])
+        return random.choice(['Smith', 'Johnson', 'Williams', 'Jones', 'Brown', 'Davis', 'Miller',
+                              'Wilson', 'Moore', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White',
+                              'Harris', 'Martin', 'Garcia', 'Clark', 'Lewis', 'Hall'])
+    # Generic name columns — but NOT compound names like company_name, plan_name, etc.
     if col_lower == 'name' or 'full_name' in col_lower:
-        first = random.choice(['John', 'Jane', 'Alice', 'Bob'])
-        last = random.choice(['Smith', 'Johnson', 'Williams', 'Jones'])
-        return f"{first} {last}"
+        first = random.choice(['John', 'Jane', 'Alice', 'Bob', 'Charlie', 'Diana'])
+        last = random.choice(['Smith', 'Johnson', 'Williams', 'Jones', 'Brown', 'Davis'])
+        # Use underscore instead of space to avoid any CSV ambiguity
+        return f"{first}_{last}"
+    # Compound _name columns (company_name, plan_name, provider_name, etc.)
+    if '_name' in col_lower:
+        prefix = col_lower.replace('_name', '').replace('_', '_')
+        suffix = random.choice(['alpha', 'beta', 'gamma', 'delta', 'omega', 'prime', 'plus', 'pro'])
+        return f"{prefix}_{suffix}"
 
-    # Dates
-    if 'date' in col_lower or col_lower in ['created_at', 'updated_at', 'timestamp']:
+    # Dates and timestamps
+    if any(term in col_lower for term in ['date', 'created_at', 'updated_at', 'timestamp', '_at']):
         base_date = datetime.now() - timedelta(days=365)
         random_days = random.randint(0, 365)
         return (base_date + timedelta(days=random_days)).strftime('%Y-%m-%d')
@@ -153,28 +255,52 @@ def generate_column_value(
     # Status/State columns
     if 'status' in col_lower:
         return random.choice(['active', 'pending', 'completed', 'cancelled'])
-    if 'state' in col_lower:
-        return random.choice(['CA', 'NY', 'TX', 'FL', 'WA', 'IL'])
+    if col_lower == 'state' or col_lower == 'region':
+        return random.choice(['CA', 'NY', 'TX', 'FL', 'WA', 'IL', 'PA', 'OH'])
 
-    # Boolean columns
+    # Boolean columns — lowercase string literals
     if col_lower.startswith('is_') or col_lower.startswith('has_'):
-        return random.choice([True, False])
+        return random.choice(['true', 'false'])
 
     # Amount/Price/Revenue columns
-    if any(term in col_lower for term in ['amount', 'price', 'revenue', 'total', 'cost']):
+    if any(term in col_lower for term in ['amount', 'price', 'revenue', 'total', 'cost', 'value',
+                                           'salary', 'budget', 'spend', 'fee', 'rate']):
         return round(random.uniform(10.0, 1000.0), 2)
 
+    # Percentage/Score columns
+    if any(term in col_lower for term in ['percent', 'pct', 'ratio', 'score', 'rating']):
+        return round(random.uniform(0.0, 100.0), 2)
+
     # Quantity/Count columns
-    if any(term in col_lower for term in ['quantity', 'count', 'qty', 'number']):
+    if any(term in col_lower for term in ['quantity', 'count', 'qty', 'number', 'num_']):
         return random.randint(1, 100)
 
-    # Description/Notes columns
-    if any(term in col_lower for term in ['description', 'notes', 'comment']):
-        return f"Sample {column_name} for row {row_index}"
+    # Description/Notes columns — no spaces, use underscores
+    if any(term in col_lower for term in ['description', 'notes', 'comment', 'reason', 'details']):
+        return f"sample_{column_name}_record_{row_index + 1}"
 
-    # Category/Type columns
-    if any(term in col_lower for term in ['category', 'type', 'class']):
-        return random.choice(['Type A', 'Type B', 'Type C', 'Type D'])
+    # Category/Type columns — underscore-delimited
+    if any(term in col_lower for term in ['category', 'type', 'class', 'tier', 'level', 'segment',
+                                           'channel', 'source', 'medium', 'group']):
+        return random.choice(['type_a', 'type_b', 'type_c', 'type_d'])
 
-    # Default: string value
-    return f"{column_name}_{row_index}"
+    # Country/City columns — no spaces
+    if 'country' in col_lower:
+        return random.choice(['US', 'UK', 'CA', 'DE', 'FR', 'AU', 'JP'])
+    if 'city' in col_lower:
+        return random.choice(['new_york', 'los_angeles', 'chicago', 'houston', 'phoenix', 'seattle'])
+
+    # Phone columns — digits only (no dashes)
+    if 'phone' in col_lower:
+        return f"555{random.randint(1000000, 9999999)}"
+
+    # URL columns
+    if 'url' in col_lower or 'link' in col_lower or 'website' in col_lower:
+        return f"https://example.com/{column_name}/{row_index}"
+
+    # Year / vintage columns — plain integer year
+    if 'year' in col_lower or 'vintage' in col_lower:
+        return random.randint(2015, 2025)
+
+    # Default: descriptive string value (underscores only)
+    return f"{column_name}_{row_index + 1}"
