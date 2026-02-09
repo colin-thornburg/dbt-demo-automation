@@ -106,7 +106,8 @@ resource "dbtcloud_job" "production_job" {
   name             = "Production Build"
   description      = "Daily production dbt build - generates all artifacts"
   execute_steps    = [
-    "dbt build"
+    "dbt seed --full-refresh",
+    "dbt build --exclude resource_type:seed"
   ]
   
   triggers = {
