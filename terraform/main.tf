@@ -45,6 +45,9 @@ resource "dbtcloud_snowflake_credential" "dev_credentials" {
   auth_type   = "password"
   num_threads = var.dev_threads
   schema      = var.snowflake_schema
+  database    = var.snowflake_database
+  warehouse   = var.snowflake_warehouse
+  role        = var.snowflake_role
   user        = var.snowflake_user
   password    = var.snowflake_password
   is_active   = true
@@ -73,6 +76,9 @@ resource "dbtcloud_snowflake_credential" "prod_credentials" {
   auth_type   = "password"
   num_threads = var.prod_threads
   schema      = var.snowflake_schema
+  database    = var.snowflake_database
+  warehouse   = var.snowflake_warehouse
+  role        = var.snowflake_role
   user        = var.snowflake_user
   password    = var.snowflake_password
   is_active   = true

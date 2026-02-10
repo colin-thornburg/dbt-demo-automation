@@ -125,100 +125,62 @@ class OpenAIProvider(AIProvider):
         """
         _max = max_tokens or 4096
 
-        # GPT-5 models support special parameters
-        if self.model.startswith('gpt-5'):
-            def _build_input(role: str, text: str) -> dict:
-                return {
-                    "role": role,
-                    "content": [{"type": "input_text", "text": text}]
+        # Build a reusable message list
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        # Use Responses API for newer reasoning/model families first.
+        if (
+            self.model.startswith("gpt-5")
+            or self.model.startswith("o1")
+            or self.model.startswith("o3")
+            or self.model.startswith("o4")
+        ):
+            input_payload = [{"role": m["role"], "content": m["content"]} for m in messages]
+
+            try:
+                response_kwargs = {
+                    "model": self.model,
+                    "input": input_payload,
+                    "max_output_tokens": _max,
                 }
+                if temperature is not None:
+                    response_kwargs["temperature"] = temperature
+                response = self.client.responses.create(**response_kwargs)
+                output_text = getattr(response, "output_text", None)
+                if output_text:
+                    return output_text.strip()
+            except Exception:
+                # Fall through to Chat Completions fallback below.
+                pass
 
-            inputs = []
-            if system_prompt:
-                inputs.append(_build_input("system", system_prompt))
-            inputs.append(_build_input("user", prompt))
+        # Chat Completions fallback with conservative retries for parameter compatibility.
+        attempt_kwargs = []
+        primary_kwargs = {
+            "model": self.model,
+            "messages": messages,
+        }
+        if max_tokens is not None:
+            primary_kwargs["max_tokens"] = _max
+        if temperature is not None:
+            primary_kwargs["temperature"] = temperature
+        attempt_kwargs.append(primary_kwargs)
+        attempt_kwargs.append({"model": self.model, "messages": messages, "max_tokens": _max})
+        attempt_kwargs.append({"model": self.model, "messages": messages})
 
-            response = self.client.responses.create(
-                model=self.model,
-                input=inputs,
-                max_output_tokens=_max,
-            )
+        last_error = None
+        for kwargs in attempt_kwargs:
+            try:
+                response = self.client.chat.completions.create(**kwargs)
+                return response.choices[0].message.content
+            except Exception as e:
+                last_error = e
 
-            # Prefer the convenience helper when available
-            output_text = getattr(response, "output_text", None)
-            if output_text:
-                return output_text.strip()
-
-            # Fallback: stitch together any text fragments
-            text_fragments = []
-            for item in getattr(response, "output", []) or []:
-                item_type = getattr(item, "type", None)
-                if item_type is None:
-                    item_type = getattr(item, "role", None)
-                if item_type is None and isinstance(item, dict):
-                    item_type = item.get("type") or item.get("role")
-                if item_type == "message":
-                    contents = getattr(item, "content", None)
-                    if contents is None and isinstance(item, dict):
-                        contents = item.get("content", [])
-                    contents = contents or []
-                    for content_part in contents:
-                        text = getattr(content_part, "text", None)
-                        if text is None and isinstance(content_part, dict):
-                            text = content_part.get("text")
-                        if text:
-                            text_fragments.append(text)
-                elif item_type == "output_text":
-                    content = getattr(item, "content", None)
-                    if content is None and isinstance(item, dict):
-                        content = item.get("content")
-                    if isinstance(content, list):
-                        for chunk in content:
-                            text = getattr(chunk, "text", None)
-                            if text is None and isinstance(chunk, dict):
-                                text = chunk.get("text")
-                            if text:
-                                text_fragments.append(text)
-                    elif isinstance(content, str):
-                        text_fragments.append(content)
-
-            if text_fragments:
-                return "".join(text_fragments).strip()
-
-            # As a last resort, return stringified response
-            return str(response)
-
-        # o-series models (o1, o3, o4) don't support system prompts, so prepend to user message
-        if self.model.startswith('o1') or self.model.startswith('o3') or self.model.startswith('o4'):
-            messages = []
-            # Combine system prompt with user prompt for o-series models
-            if system_prompt:
-                combined_prompt = f"{system_prompt}\n\n{prompt}"
-                messages.append({"role": "user", "content": combined_prompt})
-            else:
-                messages.append({"role": "user", "content": prompt})
-
-            # o-series models also don't support temperature or max_tokens in the same way
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-            )
-        else:
-            messages = []
-            # Standard GPT models support system prompts
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-
-            messages.append({"role": "user", "content": prompt})
-
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=_max,
-                temperature=temperature if temperature is not None else 0.7,
-            )
-
-        return response.choices[0].message.content
+        if last_error:
+            raise last_error
+        raise RuntimeError("OpenAI request failed without an explicit error")
 
 
 def get_ai_provider(provider_type: str, api_key: str, model: str) -> AIProvider:

@@ -9,8 +9,9 @@ import {
   getStatus,
   getMissingFields,
   generateScenario,
+  getPromptPreview,
 } from '../api/client'
-import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Loader2, AlertCircle, Bot, Sparkles, TerminalSquare } from 'lucide-react'
 import ErrorAlert from '../components/ErrorAlert'
 
 export default function SetupPage() {
@@ -20,6 +21,8 @@ export default function SetupPage() {
   const [error, setError] = useState(null)
   const [status, setStatus] = useState(null)
   const [missingFields, setMissingFields] = useState([])
+  const [promptPreview, setPromptPreview] = useState(null)
+  const [promptPreviewLoading, setPromptPreviewLoading] = useState(false)
 
   // Demo inputs
   const [companyName, setCompanyName] = useState('Jaffle Shop')
@@ -60,7 +63,7 @@ export default function SetupPage() {
       // Set AI model based on provider
       const defaultModel = config.default_ai_provider === 'claude'
         ? config.default_claude_model || 'claude-opus-4-6'
-        : config.default_openai_model || 'gpt-5.2-thinking'
+        : config.default_openai_model || 'gpt-4o-mini'
       setAiModel(defaultModel)
       
       // Set GitHub defaults
@@ -97,7 +100,7 @@ export default function SetupPage() {
     if (config && aiProvider) {
       const newModel = aiProvider === 'claude'
         ? config.default_claude_model || 'claude-opus-4-6'
-        : config.default_openai_model || 'gpt-5.2-thinking'
+        : config.default_openai_model || 'gpt-4o-mini'
       setAiModel(newModel)
     }
   }, [aiProvider, config])
@@ -181,6 +184,41 @@ export default function SetupPage() {
     const interval = setInterval(fetchStatus, 2000)
     return () => clearInterval(interval)
   }, [sessionId])
+
+  // Prompt preview for transparency
+  useEffect(() => {
+    const fetchPromptPreview = async () => {
+      if (!sessionId || !companyName || !industry) {
+        setPromptPreview(null)
+        return
+      }
+      try {
+        setPromptPreviewLoading(true)
+        const preview = await getPromptPreview(sessionId, {
+          company_name: companyName,
+          industry,
+          discovery_notes: discoveryNotes,
+          pain_points: painPoints,
+          include_semantic_layer: includeSemanticLayer,
+        })
+        setPromptPreview(preview)
+      } catch (error) {
+        console.error('Failed to fetch prompt preview:', error)
+      } finally {
+        setPromptPreviewLoading(false)
+      }
+    }
+
+    const timeoutId = setTimeout(fetchPromptPreview, 350)
+    return () => clearTimeout(timeoutId)
+  }, [
+    sessionId,
+    companyName,
+    industry,
+    discoveryNotes,
+    painPoints,
+    includeSemanticLayer,
+  ])
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -319,6 +357,55 @@ export default function SetupPage() {
             />
           </div>
 
+          <div className="pt-4 border-t border-dbt-gray-200">
+            <div className="rounded-xl border border-slate-700 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 shadow-lg">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/20 px-2.5 py-1 text-[11px] font-semibold text-violet-200">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    AI Prompt Preview
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-2.5 py-1 text-[11px] font-semibold text-cyan-200">
+                    <Bot className="w-3.5 h-3.5" />
+                    Live
+                  </div>
+                </div>
+                {promptPreviewLoading && (
+                  <div className="text-xs text-slate-300">Syncing...</div>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-300 mb-3">
+                This is the exact prompt payload generated from your discovery notes and pain points.
+              </p>
+
+              <label className="block text-[11px] uppercase tracking-wide font-semibold text-slate-300 mb-1.5">
+                User Prompt
+              </label>
+              <div className="relative">
+                <TerminalSquare className="w-4 h-4 text-slate-500 absolute top-2.5 left-2.5" />
+                <textarea
+                  readOnly
+                  value={promptPreview?.user_prompt || 'Enter company and industry to preview prompt...'}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 text-slate-100 font-mono text-xs leading-relaxed pl-8 pr-3 py-2.5 focus:outline-none"
+                  rows={10}
+                />
+              </div>
+
+              <details className="mt-3">
+                <summary className="text-xs font-medium text-slate-300 cursor-pointer hover:text-white transition-colors">
+                  Show system prompt
+                </summary>
+                <textarea
+                  readOnly
+                  value={promptPreview?.system_prompt || 'System prompt will appear here...'}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 text-slate-100 font-mono text-xs leading-relaxed px-3 py-2.5 mt-2 focus:outline-none"
+                  rows={8}
+                />
+              </details>
+            </div>
+          </div>
+
           <div className="flex items-center">
             <input
               type="checkbox"
@@ -379,7 +466,7 @@ export default function SetupPage() {
                 if (e.target.value === 'claude') {
                   setAiModel(config?.default_claude_model || 'claude-opus-4-6')
                 } else {
-                  setAiModel(config?.default_openai_model || 'gpt-5.2-thinking')
+                  setAiModel(config?.default_openai_model || 'gpt-4o-mini')
                 }
               }}
               className="input-field"
@@ -419,7 +506,10 @@ export default function SetupPage() {
                 </>
               ) : (
                 <>
-                  <option value="gpt-5.2-thinking">gpt-5.2-thinking — Deepest reasoning (recommended)</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini — Fast, inexpensive, reliable default</option>
+                  <option value="gpt-4.1">gpt-4.1 — Strong quality for longer generation tasks</option>
+                  <option value="o3-mini">o3-mini — Reasoning-focused with good speed/cost</option>
+                  <option value="gpt-5.2-thinking">gpt-5.2-thinking — Deepest reasoning</option>
                   <option value="gpt-5.2-codex">gpt-5.2-codex — Optimized for code generation</option>
                   <option value="gpt-5.2-instant">gpt-5.2-instant — Fastest, lowest cost</option>
                 </>

@@ -138,6 +138,78 @@ def load_additional_prompt_guidance(exclude: Optional[List[str]] = None) -> str:
     return "\n\n".join(guidance_sections)
 
 
+def build_generation_prompts(
+    company_name: str,
+    industry: str,
+    discovery_notes: Optional[str] = None,
+    pain_points: Optional[str] = None,
+    include_semantic_layer: bool = False,
+    regenerate_feedback: Optional[str] = None,
+) -> dict:
+    """
+    Build the exact system and user prompts used for scenario generation.
+
+    Returns:
+        Dict with "system_prompt" and "user_prompt".
+    """
+    # Load prompt templates
+    system_prompt = load_prompt_template("demo_scenario_system")
+    additional_guidance = load_additional_prompt_guidance(
+        exclude=["demo_scenario_system", "demo_scenario_user"]
+    )
+    if additional_guidance:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            f"Additional internal guidelines to follow:\n{additional_guidance}"
+        )
+    user_prompt_template = load_prompt_template("demo_scenario_user")
+
+    # Build optional sections
+    discovery_section = ""
+    if discovery_notes:
+        discovery_section = (
+            "\n**Discovery Notes (READ CAREFULLY - This defines what the demo should be about):**\n"
+            f"{discovery_notes}\n"
+        )
+
+    pain_points_section = ""
+    if pain_points:
+        pain_points_section = f"\n**Technical Pain Points:**\n{pain_points}\n"
+
+    semantic_section = ""
+    semantic_talking_points = ""
+    if include_semantic_layer:
+        semantic_section = "\n**Note:** This demo should include Semantic Layer examples (metrics and semantic models)."
+        semantic_talking_points = '\n7. **Semantic Layer**: How to define metrics once and use everywhere'
+
+    incremental_section = ""
+    if not include_semantic_layer:  # Keep it simpler without semantic layer
+        incremental_section = "   - At least ONE mart model should be incremental (for demonstrating incremental materialization)"
+
+    # Add regeneration feedback if provided
+    regenerate_section = ""
+    if regenerate_feedback:
+        regenerate_section = (
+            f"\n\n**FEEDBACK FROM PREVIOUS GENERATION:**\n{regenerate_feedback}\n\n"
+            "Please adjust the scenario based on this feedback.\n"
+        )
+
+    user_prompt = user_prompt_template.format(
+        company_name=company_name,
+        industry=industry,
+        discovery_notes_section=discovery_section,
+        pain_points_section=pain_points_section,
+        semantic_layer_section=semantic_section,
+        semantic_layer_talking_points=semantic_talking_points,
+        incremental_section=incremental_section,
+    ) + regenerate_section
+
+    return {
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+    }
+
+
 def generate_demo_scenario(
     company_name: str,
     industry: str,
@@ -166,52 +238,16 @@ def generate_demo_scenario(
         ValueError: If AI response cannot be parsed
         Exception: If AI generation fails
     """
-    # Load prompt templates
-    system_prompt = load_prompt_template("demo_scenario_system")
-    additional_guidance = load_additional_prompt_guidance(
-        exclude=["demo_scenario_system", "demo_scenario_user"]
-    )
-    if additional_guidance:
-        system_prompt = (
-            f"{system_prompt}\n\n"
-            f"Additional internal guidelines to follow:\n{additional_guidance}"
-        )
-    user_prompt_template = load_prompt_template("demo_scenario_user")
-
-    # Build optional sections
-    discovery_section = ""
-    if discovery_notes:
-        discovery_section = f"\n**Discovery Notes (READ CAREFULLY - This defines what the demo should be about):**\n{discovery_notes}\n"
-
-    pain_points_section = ""
-    if pain_points:
-        pain_points_section = f"\n**Technical Pain Points:**\n{pain_points}\n"
-
-    semantic_section = ""
-    semantic_talking_points = ""
-    if include_semantic_layer:
-        semantic_section = "\n**Note:** This demo should include Semantic Layer examples (metrics and semantic models)."
-        semantic_talking_points = '\n7. **Semantic Layer**: How to define metrics once and use everywhere'
-
-    incremental_section = ""
-    if not include_semantic_layer:  # Keep it simpler without semantic layer
-        incremental_section = "   - At least ONE mart model should be incremental (for demonstrating incremental materialization)"
-
-    # Add regeneration feedback if provided
-    regenerate_section = ""
-    if regenerate_feedback:
-        regenerate_section = f"\n\n**FEEDBACK FROM PREVIOUS GENERATION:**\n{regenerate_feedback}\n\nPlease adjust the scenario based on this feedback.\n"
-
-    # Format the user prompt
-    user_prompt = user_prompt_template.format(
+    prompts = build_generation_prompts(
         company_name=company_name,
         industry=industry,
-        discovery_notes_section=discovery_section,
-        pain_points_section=pain_points_section,
-        semantic_layer_section=semantic_section,
-        semantic_layer_talking_points=semantic_talking_points,
-        incremental_section=incremental_section
-    ) + regenerate_section
+        discovery_notes=discovery_notes,
+        pain_points=pain_points,
+        include_semantic_layer=include_semantic_layer,
+        regenerate_feedback=regenerate_feedback,
+    )
+    system_prompt = prompts["system_prompt"]
+    user_prompt = prompts["user_prompt"]
 
     # Generate scenario using AI
     try:

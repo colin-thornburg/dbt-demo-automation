@@ -50,6 +50,11 @@ export const generateScenario = async (sessionId) => {
   return response.data
 }
 
+export const getPromptPreview = async (sessionId, payload) => {
+  const response = await api.post(`/api/sessions/${sessionId}/prompt-preview`, payload)
+  return response.data
+}
+
 export const getScenario = async (sessionId) => {
   const response = await api.get(`/api/sessions/${sessionId}/scenario`)
   return response.data

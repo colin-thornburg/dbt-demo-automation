@@ -16,7 +16,7 @@ sys.path.insert(0, str(src_path))
 
 from src.config.settings import load_config, AppConfig
 from src.ai import get_ai_provider, generate_demo_scenario
-from src.ai.scenario_generator import DemoScenario, regenerate_scenario
+from src.ai.scenario_generator import DemoScenario, regenerate_scenario, build_generation_prompts
 from src.file_generation import generate_all_files, generate_mesh_projects
 from src.github_integration import create_demo_repository, create_mesh_repositories, default_repo_name
 from src.terraform_integration import generate_terraform_config, write_terraform_files
@@ -76,6 +76,14 @@ class DbtCloudConfigRequest(BaseModel):
 
 class RegenerateRequest(BaseModel):
     feedback: str
+
+
+class PromptPreviewRequest(BaseModel):
+    company_name: str
+    industry: str
+    discovery_notes: str = ""
+    pain_points: str = ""
+    include_semantic_layer: bool = False
 
 
 class SessionResponse(BaseModel):
@@ -419,6 +427,22 @@ async def regenerate_scenario_endpoint(session_id: str, request: RegenerateReque
         return new_scenario.model_dump()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sessions/{session_id}/prompt-preview")
+async def get_prompt_preview(session_id: str, request: PromptPreviewRequest):
+    """Return the exact prompts that will be sent to AI generation."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    prompts = build_generation_prompts(
+        company_name=request.company_name,
+        industry=request.industry,
+        discovery_notes=request.discovery_notes,
+        pain_points=request.pain_points,
+        include_semantic_layer=request.include_semantic_layer,
+    )
+    return prompts
 
 
 @app.post("/api/sessions/{session_id}/generate-files")

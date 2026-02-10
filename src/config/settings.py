@@ -161,7 +161,7 @@ class AppConfig(BaseSettings):
         alias="DEFAULT_CLAUDE_MODEL"
     )
     default_openai_model: str = Field(
-        default="gpt-5.2-thinking",
+        default="gpt-4o-mini",
         alias="DEFAULT_OPENAI_MODEL"
     )
 
